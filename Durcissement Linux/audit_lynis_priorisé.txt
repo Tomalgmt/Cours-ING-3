@@ -105,16 +105,6 @@ La qualité et la révocation des secrets priment sur la rotation automatique, m
 Points déjà conformes dans les vérifications : root est le seul compte UID 0 ; aucune entrée de mot de passe vide dans /etc/shadow. Ces contrôles n'impliquent pas que les mots de passe sont robustes.
 
 
-Contrôles du script associés au thème (repères, pas résultats d'exécution) :
-- Ligne 62 : Aucun compte (hors root) avec UID 0.
-- Ligne 63 : Aucun compte sans mot de passe.
-- Ligne 64 : Comptes de service sans shell interactif (deploy, sauvegarde).
-- Ligne 65 : Compte stagiaire supprime ou verrouille.
-- Ligne 66 : Politique d'expiration des mots de passe (PASS_MAX_DAYS <= 90).
-- Ligne 67 : Expiration appliquee aux comptes existants (alice, bob).
-- Ligne 68 : Module de robustesse des mots de passe present (pwquality/cracklib).
-- Ligne 69 : Verrouillage apres echecs (pam_faillock ou pam_tally2).
-
 ==============================================================================
 2. ÉLÉVATION DE PRIVILÈGES
 ==============================================================================
@@ -146,13 +136,6 @@ Binaire généraliste inutilement privilégié, donnant un chemin très direct v
 
 
 Point déjà conforme : visudo -c valide la syntaxe des fichiers sudoers. La syntaxe et la pertinence des autorisations sont deux contrôles distincts.
-
-
-Contrôles du script associés au thème (repères, pas résultats d'exécution) :
-- Ligne 72 : Plus aucune regle NOPASSWD: ALL.
-- Ligne 73 : Fichier /etc/sudoers.d/99-laxiste supprime.
-- Ligne 74 : Syntaxe sudoers valide.
-- Ligne 104 : Binaire SUID superflu /usr/local/bin/find-suid retire.
 
 ==============================================================================
 3. ACCÈS DISTANTS
@@ -225,17 +208,6 @@ Impact limité. Le test recherche les chaînes production ou admin@ ; il ne dema
 
 Point déjà conforme : PermitEmptyPasswords=no.
 
-
-Contrôles du script associés au thème (repères, pas résultats d'exécution) :
-- Ligne 78 : PermitRootLogin desactive.
-- Ligne 79 : Authentification par mot de passe desactivee.
-- Ligne 80 : MaxAuthTries <= 4.
-- Ligne 81 : LoginGraceTime <= 60.
-- Ligne 82 : X11Forwarding desactive.
-- Ligne 83 : PermitEmptyPasswords desactive.
-- Ligne 84 : Restriction d'acces (AllowUsers/AllowGroups/DenyUsers).
-- Ligne 85 : Banniere ne divulguant plus d'information.
-
 ==============================================================================
 4. SERVICES, RÉSEAU ET PARE-FEU
 ==============================================================================
@@ -294,18 +266,6 @@ L'installation seule n'est pas une écoute. L'état actuel ne démontre pas de f
 
 Nginx est actif, activé au démarrage et écoute sur 8080. Sa réponse HTTP métier sera contrôlée lors de la validation finale. Le test des ports exclut les boucles locales et examine aussi les adresses IPv6, malgré son libellé mentionnant 0.0.0.0.
 
-
-Contrôles du script associés au thème (repères, pas résultats d'exécution) :
-- Ligne 88 : telnetd absent.
-- Ligne 89 : rpcbind arrete/desactive.
-- Ligne 90 : avahi-daemon arrete/desactive.
-- Ligne 91 : nfs-kernel-server absent ou inactif.
-- Ligne 92 : xinetd absent.
-- Ligne 93 : Aucun port en ecoute hors 22/8080 sur 0.0.0.0.
-- Ligne 96 : Un pare-feu est actif (nftables ou ufw).
-- Ligne 97 : Politique par defaut restrictive en entree.
-- Ligne 98 : Le pare-feu survit au redemarrage (unite activee).
-
 ==============================================================================
 5. SYSTÈMES DE FICHIERS
 ==============================================================================
@@ -347,13 +307,6 @@ Altération, remplacement ou suppression du contenu du service métier par un ut
 
 Argument de criticité :
 Atteinte directe à l'intégrité et à la disponibilité. Aucun mécanisme d'exécution de code côté serveur n'est démontré, donc une élévation root n'est pas affirmée pour ce seul dossier.
-
-
-Contrôles du script associés au thème (repères, pas résultats d'exécution) :
-- Ligne 101 : /etc/shadow non lisible par les autres, non modifiable par le groupe.
-- Ligne 102 : /srv/metier n'est plus en 777.
-- Ligne 103 : /opt/scripts n'est plus en 777.
-- Ligne 105 : Aucun fichier world-writable dans /etc.
 
 ==============================================================================
 6. NOYAU
@@ -423,18 +376,6 @@ Conservation éventuelle d'informations sensibles dans des dumps selon la config
 Argument de criticité :
 2 correspond au mode suidsafe, pas au mode dangereux 1. Le chemin relatif observé ne satisfait pas la condition des dumps privilégiés ; aucune fuite root n'est démontrée. Le script exige néanmoins 0.
 
-
-Contrôles du script associés au thème (repères, pas résultats d'exécution) :
-- Ligne 108 : kernel.randomize_va_space = 2.
-- Ligne 109 : kernel.dmesg_restrict = 1.
-- Ligne 110 : kernel.kptr_restrict >= 1.
-- Ligne 111 : fs.suid_dumpable = 0.
-- Ligne 112 : net.ipv4.ip_forward = 0.
-- Ligne 113 : net.ipv4.tcp_syncookies = 1.
-- Ligne 114 : accept_redirects = 0 (all et default).
-- Ligne 115 : accept_source_route = 0 (all et default).
-- Ligne 116 : Les reglages survivent au reboot (fichier persistant present).
-
 ==============================================================================
 7. CONFINEMENT DES PROCESSUS
 ==============================================================================
@@ -463,13 +404,6 @@ Un processus compromis peut acquérir des privilèges par certains mécanismes l
 
 Argument de criticité :
 Défense supplémentaire absente, particulièrement pertinente en présence du binaire SUID relevé. Ce réglage seul ne prouve pas une exploitation ni ne remplace les permissions et AppArmor.
-
-
-Contrôles du script associés au thème (repères, pas résultats d'exécution) :
-- Ligne 121 : AppArmor actif et profils charges.
-- Ligne 122 : Aucun profil laisse en mode complain.
-- Ligne 123 : Le service metier est couvert par un profil en enforce.
-- Ligne 124 : Confinement systemd de l'unite metier (NoNewPrivileges).
 
 ==============================================================================
 8. JOURNALISATION ET INTÉGRITÉ
@@ -528,16 +462,6 @@ Sudo peut déjà écrire des événements dans les logs système. Le constat por
 
 
 Point déjà conforme au contrôle textuel : SystemMaxUse=10M est explicitement défini. Le script ne vérifie pas si cette taille suffit réellement ; elle n'est donc pas présentée ici comme un échec.
-
-
-Contrôles du script associés au thème (repères, pas résultats d'exécution) :
-- Ligne 75 : Journalisation des commandes sudo activee.
-- Ligne 127 : auditd installe et actif.
-- Ligne 128 : Regles auditd chargees (> 5).
-- Ligne 129 : Journal persistant sur disque.
-- Ligne 130 : Journal dimensionne explicitement (SystemMaxUse).
-- Ligne 131 : Outil d'integrite fichiers present (AIDE ou equivalent).
-- Ligne 132 : Base de reference d'integrite initialisee.
 
 ==============================================================================
 9. MISES À JOUR

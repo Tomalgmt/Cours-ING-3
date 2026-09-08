@@ -1,10 +1,191 @@
 Ici je vais faire le rapport 
 
-Partie 1 : Audit initial  
 
+A. SERVICE METIER et audit
+
+Après avoir lancé le script de dégradation et de setup on a bien :
+
+moutsss@Durcissement:~/tp$ curl http://127.0.0.1:8080/health
+OK
+
+On peut aussi voir le status de nginx avec : 
+sudo systemctl status nginx
+qui doit donc etre enabled
 
 On a commencé par faire un audit lynis que l'on a mit dans le fichier appelé "audit_lynis.txt" avec la commande "
-udo lynis audi system 2>&1 | tee audit_lynis.txt.
-
+sudo lynis audit system 2>&1 | tee audit_lynis.txt.
 Avec cet audit on peut voir la surface d'attaque globale ainsi que des suggestions de traçabilitée. Donc j'ai synthétisé les points à corriger dans un fichier audit_lynis_priorisé.txt
-Dans cet audit j'ai gardé 
+Dans cet audit j'ai gardé les points les plus critiques et je les ais classés par themes avec le TP
+
+Après l'audit on peut commencer a regarder comment corriger et réduire la surface d'attaque.
+
+
+B. COMPTES ET AUTHENTIFICATION 
+
+  [PASS] Aucun compte (hors root) avec UID 0
+  [PASS] Aucun compte sans mot de passe
+  [PASS] Comptes de service sans shell interactif (deploy, sauvegarde)
+  [PASS] Compte stagiaire supprime ou verrouille
+  [PASS] Politique d'expiration des mots de passe (PASS_MAX_DAYS <= 90)
+  [PASS] Expiration appliquee aux comptes existants (alice, bob)
+  [PASS] Module de robustesse des mots de passe present (pwquality/cracklib)
+  [PASS] Verrouillage apres echecs (pam_faillock ou pam_tally2)
+
+On regarde les comptes qui existent sur la machine avec cat /etc/passwd et on voit que beaucoup de compte avec un uid superieur a 1000 sont présents
+On voit des comptes "humains" avec un shell interactif : 
+
+moutsss         UID=1000   shell=/bin/bash
+alice           UID=1001   shell=/bin/bash
+bob             UID=1002   shell=/bin/bash
+stagiaire       UID=1003   shell=/bin/bash
+sauvegarde      UID=1004   shell=/bin/bash
+deploy          UID=1005   shell=/bin/bash
+
+Après vérification visuelle ce sont les seuls comptes avec root qui disposent d'un shell interactif et il n'y a pas d'autre comptes UID=0.
+
+Le stagiaire n'est surement plus la (après demande auprès de vous) je supprime donc le compte stagiaire avec la commande sudo userdel -r stagiaire
+
+On veut maintenant mettre en place une politique d'expiration des mots de passes. On peut voir avec sudo passwd -S "user" que les mots de passes n'expirent pas. 
+Par exemple : 
+moutsss@Durcissement:~/Cours-ING-3/Durcissement Linux$ sudo passwd -S alice
+alice P 2026-09-08 0 99999 7 -1
+
+ce qui veut dire que le mot de passe n'expire pas.
+On va alors dans /etc/login.defs pour ajouter une politique d'expiration des mots de passes aux comptes créés. On va mettre 90 jours pour l'expiration et 7 jours pour l'avertissement avant expiration avec les lignes : 
+
+PASS_MAX_DAYS   90 (actuellement a 99999)
+PASS_MIN_DAYS   1
+PASS_WARN_AGE   14
+
+le PASS_MIN_DAYS permet de ne pas changer le mot de passe trop souvent (1 jour minimum entre deux changements de mot de passe)
+Il faut l'appliquer à tous les comptes avec la commande sudo chage -M 90 -m 1 -W 14 "user" pour chaque compte 
+-M 90   # expiration
+-m 1    # minimum
+-W 14   # warning
+
+On veut maintenant ajouter un test de qualité pour les mots de passe utilisateurs 
+
+On va installer les deux utilitaires : libpam-pwquality et pam_faillock avec :
+sudo apt update
+sudo apt install libpam-pwquality libpam-modules
+
+On regarde maintenant : /etc/security/pwquality.conf et on modifie
+
+minlen = 12     # longueure minimale du mot de passe
+minclass = 3    # nombre de classes de caractères (majuscule, minuscule, chiffre, caractère spécial)
+dcredit = 2     # nombre de chiffres minimum
+ucredit = 2     # nombre de majuscules minimum
+lcredit = 2     # nombre de minuscules minimum
+ocredit = 2     # nombre de caractères spéciaux minimum
+maxrepeat = 3   # nombre maximum de caractères répétés consécutivement
+
+ce qui fait une obligation de mot de passe avec 12 charactères minimum, avec au moins 2 majuscules, 2 minuscules, 2 chiffres et 2 caractères spéciaux.
+
+On ajoute le controle PAM avec l'utilitaire qu'on a installé : ```sudo pam-auth-update``` puis on coche "Pwquality password strength checking" qui permet de vérifier la qualité du mot de passe 
+ou sinon en ajoutant la ligne suivante dans /etc/pam.d/common-password : 
+password        requisite                       pam_pwquality.so retry=3 
+on peut mettre retry=3 pour permettre 3 essais de mot de passe avant de refuser le changement de mot de passe.
+
+On veut maintenant verouiller le compte après echec repeté en ajoutant : 
+
+deny = 5            # nombre d'echec avant verouillage
+fail_interval = 900 # intervalle de temps pour compter les echec (en secondes)
+unlock_time = 900   # temps de verouillage du compte (en secondes)
+audit               # enregistrer les tentatives de connexion dans le journal d'audit
+
+dans /etc/security/faillock.conf
+
+Dans /etc/pam.d/common-auth on le modifie comme suit :
+auth required pam_faillock.so preauth # permet de vérifier si le compte est verouillé avant de demander le mot de passe
+pam_unix.so
+auth [default=die] pam_faillock.so authfail # permet de compter les echec de connexion
+
+Dans /etc/pam.d/common-account on ajoute : 
+account required pam_faillock.so # permet de verouiller le compte après echec repeté
+
+Après ça on a normalement tout geré pour les user (pas encore les elevations de privileges)
+
+
+C. SUDO 
+
+  [PASS] Plus aucune regle NOPASSWD: ALL
+  [PASS] Fichier /etc/sudoers.d/99-laxiste supprime
+  [PASS] Syntaxe sudoers valide
+  [PASS] Journalisation des commandes sudo activee
+
+On supprime le fichier /etc/sudoers.d/99-laxiste avec sudo rm /etc/sudoers.d/99-laxiste
+
+On veut maintenant ajouter une journalisation des commandes sudo donc on créée un fichier de configuration dédié : 
+sudo vim /etc/sudoers.d/logging
+puis on ajoute nos regles : 
+
+Defaults logfile="/var/log/sudo.log"    # fichier de log pour sudo
+Defaults log_input                      # journalisation des entrées de commandes
+Defaults log_output                     # journalisation des sorties de commandes
+
+on enregistre et on lui donne les droits associés : sudo chmod 0440 /etc/sudoers.d/logging
+
+
+On passe a la configuration ssh : 
+
+  [FAIL] PermitRootLogin desactive
+  [FAIL] Authentification par mot de passe desactivee
+  [FAIL] MaxAuthTries <= 4
+  [FAIL] LoginGraceTime <= 60
+  [FAIL] X11Forwarding desactive
+  [PASS] PermitEmptyPasswords desactive
+  [FAIL] Restriction d'acces (AllowUsers/AllowGroups/DenyUsers)
+  [FAIL] Banniere ne divulguant plus d'information
+
+On créée un fichier de durcissement dédié : 
+
+sudo vim /etc/ssh/sshd_config.d/00-durcissement.conf
+où on ajoute : 
+PermitRootLogin no              # se connecter via ssh en root directement
+PasswordAuthentication no       # desactiver l'authentification par mot de passe, seulement par clé publique
+MaxAuthTries 4                  # nombre maximum d'authentifications
+LoginGraceTime 60               # timeout avant fail du login
+X11Forwarding no                # desactiver le forwarding X11
+AllowUsers moutsss alice bob    # autoriser seulement l'utilisateur moutsss alice et bob à se connecter via ssh
+ClientAliveInterval 600         # envoyer un paquet toutes les 10 minutes pour garder la connexion active
+AllowTcpForwarding no           # desactiver le forwarding TCP ce qui empeche de forwarder des ports via ssh
+
+ATTENTION, après l'ajout de PasswordAuthentication on ne peut plus se connecter en ssh avec un mot de passe, il faut donc avoir une clé publique de l'hote présente
+dans le fichier ~/.ssh/authorized_keys de l'utilisateur pour pouvoir se connecter en ssh.
+
+Pour la bannière on modifie le fichier : sudo vim /etc/issue.net
+Par le message que l'on veut mettre dans mon cas j'ai mis "Accès réservé aux utilisateurs autorisés."
+
+
+On va passer maintenant aux services et paquets
+
+  [FAIL] telnetd absent
+  [FAIL] rpcbind arrete/desactive
+  [FAIL] avahi-daemon arrete/desactive
+  [FAIL] nfs-kernel-server absent ou inactif
+  [FAIL] xinetd absent
+  [FAIL] Aucun port en ecoute hors 22/8080 sur 0.0.0.0
+
+
+Ici on va stopper les services inutiles avec :
+sudo systemctl stop rpcbind rpcbind.socket avahi-daemon avahi-daemon.socket avahi-daemon.service nfs-server xinetd 2>/dev/null
+On va les desactiver pour qu'ils ne se lancent pas au démarrage avec :
+sudo systemctl disable rpcbind rpcbind.socket avahi-daemon avahi-daemon.socket avahi-daemon.service nfs-server xinetd 2>/dev/null
+
+Et il faut supprimer xinetd et telnet avec :
+ sudo apt remove xinetd telnetd
+
+On peut verifier qu'aucun port n'est en écoute sur 22/8080 sur 0.0.0.0 avec la commande : sudo ss -ltnp
+
+
+On va maintenant passer au PARE-FEU
+  [FAIL] Un pare-feu est actif (nftables ou ufw)
+  [FAIL] Politique par defaut restrictive en entree
+  [FAIL] Le pare-feu survit au redemarrage (unite activee)
+
+Ici on ajoute nftables avec sudo apt install nftables
+
+
+
+TODO : voir si le avahi dameon est toujours la après redémarrage (petit bug dessus)
+Puis 
