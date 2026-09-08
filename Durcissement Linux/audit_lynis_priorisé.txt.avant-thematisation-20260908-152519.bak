@@ -1,0 +1,378 @@
+AUDIT LYNIS PRIORISÉ — CONSTATS UTILES AU SCRIPT DE NOTATION
+
+L'etat actuel de la machine : 
+observé : VM derrière un NAT, SSH redirigé uniquement depuis 127.0.0.1:2222 du PC.
+
+PRIORITÉ ET CRITICITÉ
+Élevée
+Moyenne
+Faible
+Informative
+
+CONTRAINTE ÉLIMINATOIRE DU BARÈME
+Le script attend une réponse contenant OK à http://127.0.0.1:8080/health
+et contrôle nginx actif et activé au démarrage. Un service métier indisponible
+entraîne un plafond annoncé de 08/20. 
+
+
+========================================================================
+01. Droits sudo donnant un accès root sans mot de passe
+Criticité : Élevée
+Référence de l'audit : Complément au contrôle sudo de la section Authentication
+
+Constatation factuelle :
+/etc/sudoers.d/99-laxiste autorise stagiaire : NOPASSWD: ALL ; bob : NOPASSWD: /bin/bash ; alice : NOPASSWD: /usr/bin/find. Les droits effectifs ont été confirmés par sudo -l pour chaque compte. Les trois comptes disposent d'un mot de passe (statut P).
+
+Menace associée :
+Une personne contrôlant une session de l'un de ces comptes peut exécuter des commandes root ; find peut lancer un autre programme. Compromission totale de la VM, modification des données et des traces.
+
+Argument de criticité :
+Impact maximal et chemin d'élévation direct, sans vulnérabilité logicielle nécessaire. L'accès préalable à l'un des comptes reste requis ; aucune compromission à distance sans authentification n'a été démontrée. C'est la première correction à traiter.
+
+Lien avec le script de notation :
+- Ligne 65 : Compte stagiaire supprime ou verrouille.
+- Ligne 72 : Plus aucune regle NOPASSWD: ALL.
+- Ligne 73 : Fichier /etc/sudoers.d/99-laxiste supprime.
+
+
+========================================================================
+02. Mot de passe faible d'un compte administrateur et SSH par mot de passe
+Criticité : Élevée
+Référence de l'audit : AUTH-9262 ; SSH-7408 ; complément de connexion
+
+Constatation factuelle :
+La connexion autorisée de moutsss a réussi avec un secret de quatre chiffres, non reproduit ici. Ce compte possède des droits sudo complets. Les vérifications initiales indiquent PasswordAuthentication yes, MaxAuthTries 10 et LoginGraceTime 300 ; Lynis ne trouve pas de module dédié de qualité des mots de passe. L'absence de pam_faillock/pam_tally2 n'a pas été vérifiée : elle ne constitue pas un défaut confirmé dans cette fiche.
+
+Menace associée :
+Devinette du mot de passe, prise du compte puis élévation root avec le même secret.
+
+Argument de criticité :
+Le secret est effectivement faible, pas seulement une politique théorique. Le NAT et la redirection sur la boucle locale Windows limitent fortement les attaquants pouvant joindre SSH ; ils n'améliorent pas le secret lui-même. MaxAuthTries est une limite par connexion, pas un verrouillage global.
+
+Lien avec le script de notation :
+- Ligne 68 : Module de robustesse des mots de passe present (pwquality/cracklib).
+- Ligne 79 : Authentification par mot de passe desactivee.
+- Ligne 80 : MaxAuthTries <= 4.
+- Ligne 81 : LoginGraceTime <= 60.
+
+
+========================================================================
+03. ASLR désactivé
+Criticité : Élevée
+Référence de l'audit : KRNL-6000
+
+Constatation factuelle :
+kernel.randomize_va_space = 0, confirmé en direct ; le profil Lynis attend 2.
+
+Menace associée :
+Exploitation facilitée d'une corruption mémoire grâce à des adresses plus prévisibles.
+
+Argument de criticité :
+Protection transversale volontairement retirée. Une faille mémoire préalable reste nécessaire : ce réglage n'est pas, à lui seul, une exécution de code.
+
+Lien avec le script de notation :
+- Ligne 108 : kernel.randomize_va_space = 2.
+- Ligne 116 : Les reglages survivent au reboot (fichier persistant present).
+
+
+========================================================================
+04. Accès aux informations du noyau insuffisamment restreint
+Criticité : Moyenne
+Référence de l'audit : KRNL-6000
+
+Constatation factuelle :
+kernel.dmesg_restrict=0 et kernel.kptr_restrict=0 ont été confirmés lors de l'audit initial.
+
+Menace associée :
+Un utilisateur local peut obtenir des messages et des adresses noyau utiles à la préparation d'une exploitation.
+
+Argument de criticité :
+Il faut déjà disposer d'un accès local et, pour une élévation de privilèges, d'une autre faille. Ces paramètres facilitent une attaque ; ils ne donnent pas directement les droits root.
+
+Lien avec le script de notation :
+- Ligne 109 : kernel.dmesg_restrict = 1.
+- Ligne 110 : kernel.kptr_restrict >= 1.
+
+
+========================================================================
+05. Absence de confinement AppArmor effectif observé
+Criticité : Moyenne
+Référence de l'audit : Section Security frameworks
+
+Constatation factuelle :
+Lynis indique AppArmor DISABLED et aucun framework MAC. En direct, apparmor.service est inactif ; le module indique Y mais aucun profil n'est renvoyé par l'interface des profils.
+
+Menace associée :
+Après compromission d'un service, l'attaquant bénéficie de ses droits Unix sans restriction supplémentaire par profil AppArmor.
+
+Argument de criticité :
+Le support noyau existe : il serait inexact d'affirmer qu'il est absent. Le défaut porte sur le confinement effectif observé. Il aggrave une compromission préalable.
+
+Lien avec le script de notation :
+- Ligne 121 : AppArmor actif et profils charges.
+- Ligne 122 : Aucun profil laisse en mode complain.
+- Ligne 123 : Le service metier est couvert par un profil en enforce.
+
+
+========================================================================
+06. Filtrage local non démontré malgré l'indicateur Lynis
+Criticité : Moyenne
+Référence de l'audit : Section Software: firewalls ; complément direct
+
+Constatation factuelle :
+Lynis affiche ACTIVE. Pourtant nft list ruleset ne renvoie aucune règle ; les commandes iptables, ip6tables et leurs variantes legacy ne sont pas disponibles. Des services écoutent sur toutes les adresses : SSH, NFS/RPC et nginx.
+
+Menace associée :
+Un service accessible sur le réseau invité pourrait être attaqué sans restriction supplémentaire du pare-feu de la VM.
+
+Argument de criticité :
+Aucun filtrage nftables n'est observé, mais les autres mécanismes possibles n'ont pas été inventoriés exhaustivement. Le NAT actuel limite les entrées ; il ne faut pas présenter tous ces ports comme exposés sur Internet.
+
+Lien avec le script de notation :
+- Ligne 96 : Un pare-feu est actif (nftables ou ufw).
+- Ligne 97 : Politique par defaut restrictive en entree.
+- Ligne 98 : Le pare-feu survit au redemarrage (unite activee).
+
+
+========================================================================
+07. Service NFS/RPC actif sans partage utile constaté
+Criticité : Moyenne
+Référence de l'audit : STRG-1928
+
+Constatation factuelle :
+Lynis signale un serveur NFS actif avec /etc/exports vide. En direct, ce fichier ne contient que des commentaires, exportfs -v ne retourne aucun export et ss montre notamment les ports 111 et 2049 en écoute.
+
+Menace associée :
+Surface d'attaque réseau et consommation de ressources inutiles ; exploitation éventuelle d'une faille du service.
+
+Argument de criticité :
+Aucun partage ouvert ni accès à des fichiers par NFS n'a été démontré. Le risque est celui d'un service inutile actif, atténué par le NAT.
+
+Lien avec le script de notation :
+- Ligne 89 : rpcbind arrete/desactive.
+- Ligne 91 : nfs-kernel-server absent ou inactif.
+- Ligne 93 : Aucun port en ecoute hors 22/8080 sur 0.0.0.0.
+
+
+========================================================================
+08. Routage IPv4 et acceptation de redirections permissifs
+Criticité : Moyenne
+Référence de l'audit : KRNL-6000
+
+Constatation factuelle :
+net.ipv4.ip_forward=1 ; net.ipv4.conf.all.accept_redirects=1 et net.ipv4.conf.all.accept_source_route=1 ont été confirmés. Lynis signale également les deux valeurs default différentes de 0, sans valeur numérique dans le rapport.
+
+Menace associée :
+Selon la topologie et les contrôles du noyau, acceptation de chemins réseau non souhaités ou routage inutile.
+
+Argument de criticité :
+L'attaquant doit pouvoir injecter un trafic pertinent. La VM n'a qu'un adaptateur NAT : le routage activé ne démontre pas un pivot entre plusieurs réseaux. Les paramètres IPv6, rp_filter et send_redirects ne font pas partie des contrôles retenus ici.
+
+Lien avec le script de notation :
+- Ligne 112 : net.ipv4.ip_forward = 0.
+- Ligne 114 : accept_redirects = 0 (all et default).
+- Ligne 115 : accept_source_route = 0 (all et default).
+
+
+========================================================================
+09. Protection SYN cookies désactivée
+Criticité : Moyenne
+Référence de l'audit : KRNL-6000
+
+Constatation factuelle :
+net.ipv4.tcp_syncookies=0, confirmé.
+
+Menace associée :
+Saturation de la file des connexions TCP semi-ouvertes par un SYN flood.
+
+Argument de criticité :
+Atteinte à la disponibilité des services accessibles. Le volume de trafic possible et les protections de l'hôte limitent le scénario ; cela ne donne pas accès aux données.
+
+Lien avec le script de notation :
+- Ligne 113 : net.ipv4.tcp_syncookies = 1.
+
+
+========================================================================
+10. Absence d'auditd
+Criticité : Moyenne
+Référence de l'audit : ACCT-9628
+
+Constatation factuelle :
+Lynis ne trouve pas auditd. Un démon de logs, journald et logrotate sont présents. Le rapport initial ne fournit pas le nombre de règles auditd chargées.
+
+Menace associée :
+Reconstitution des actions sensibles plus difficile en l'absence d'un audit de sécurité dédié.
+
+Argument de criticité :
+Défaut de détection et de traçabilité, pas absence totale de journaux ni possibilité d'intrusion directe. La journalisation distante n'est pas contrôlée par le script et a été retirée du périmètre.
+
+Lien avec le script de notation :
+- Ligne 127 : auditd installe et actif.
+- Ligne 128 : Regles auditd chargees (> 5).
+
+
+========================================================================
+11. Absence de suivi d'intégrité
+Criticité : Moyenne
+Référence de l'audit : FINT-4350
+
+Constatation factuelle :
+Lynis ne trouve pas d'outil de suivi d'intégrité. Aucune base de référence AIDE/Tripwire n'a été vérifiée lors de l'audit initial.
+
+Menace associée :
+Modification persistante de fichiers système plus difficile à détecter.
+
+Argument de criticité :
+Une altération préalable est nécessaire ; le défaut réduit les possibilités de détection. Le script recherche AIDE ou Tripwire et une base associée. L'installation de debsums ne correspond pas à ces tests.
+
+Lien avec le script de notation :
+- Ligne 131 : Outil d'integrite fichiers present (AIDE ou equivalent).
+- Ligne 132 : Base de reference d'integrite initialisee.
+
+
+========================================================================
+12. Mises à jour automatiques non détectées
+Criticité : Moyenne
+Référence de l'audit : PKGS-7420
+
+Constatation factuelle :
+Lynis ne trouve pas d'outil de mises à jour automatiques. Le contrôle des paquets actualisables est SKIPPED ; le dépôt de sécurité est présent.
+
+Menace associée :
+Des correctifs peuvent rester non appliqués en l'absence d'une maintenance manuelle régulière.
+
+Argument de criticité :
+Il s'agit d'un risque de maintenance. Aucune mise à jour de sécurité en attente n'est établie par ce rapport ; le script de notation n'a pas été exécuté pour en déduire un résultat.
+
+Lien avec le script de notation :
+- Ligne 135 : Aucune mise a jour de securite en attente.
+- Ligne 136 : Mises a jour automatiques configurees.
+- Ligne 137 : Mises a jour automatiques reellement activees.
+
+
+========================================================================
+13. Connexion root permise dans la configuration SSH
+Criticité : Faible
+Référence de l'audit : SSH-7408 : PermitRootLogin
+
+Constatation factuelle :
+sshd -T indique PermitRootLogin yes, mais passwd -S root indique L : le mot de passe root est verrouillé.
+
+Menace associée :
+Connexion directe privilégiée si une méthode d'authentification root devient utilisable.
+
+Argument de criticité :
+Le rapport seul pourrait faire surestimer ce point : aucun accès root par mot de passe n'est prouvé. Les clés root et tous les cas Match n'ont pas été audités ; le compte ne doit pas être considéré accessible simplement à cause de yes.
+
+Lien avec le script de notation :
+- Ligne 78 : PermitRootLogin desactive.
+
+
+========================================================================
+14. Transfert X11 activé
+Criticité : Faible
+Référence de l'audit : SSH-7408 : X11Forwarding
+
+Constatation factuelle :
+sshd -T indique X11Forwarding yes lors de la vérification initiale.
+
+Menace associée :
+Extension de la surface d'attaque lorsque le transfert d'affichage est réellement utilisé.
+
+Argument de criticité :
+L'authentification est préalable et l'option seule ne constitue pas une intrusion. Le contrôle du script porte uniquement sur X11Forwarding ; les transferts TCP et d'agent ont été retirés de cette fiche.
+
+Lien avec le script de notation :
+- Ligne 82 : X11Forwarding desactive.
+
+
+========================================================================
+15. Confinement systemd de nginx à vérifier
+Criticité : Faible
+Référence de l'audit : BOOT-5264
+
+Constatation factuelle :
+Lynis classe nginx.service UNSAFE. La valeur NoNewPrivileges n'a pas été relevée lors de l'audit initial.
+
+Menace associée :
+Un service compromis peut conserver davantage de possibilités d'acquérir des privilèges si les mécanismes appropriés ne sont pas utilisés.
+
+Argument de criticité :
+Le score UNSAFE ne prouve ni une faille exploitable, ni que NoNewPrivileges vaut no. Cette fiche est une vérification utile au barème, pas un échec confirmé. Aucun audit des autres unités n'est requis par le contrôle associé.
+
+Lien avec le script de notation :
+- Ligne 124 : Confinement systemd de l'unite metier (NoNewPrivileges).
+
+
+========================================================================
+16. Telnet installé et xinetd actif, sans écoute Telnet observée
+Criticité : Faible
+Référence de l'audit : INSE-8322 ; INSE-8100
+
+Constatation factuelle :
+Lynis détecte le paquet serveur Telnet et xinetd actif. La vérification ss ne montre aucun port 23 en écoute ; les fichiers xinetd consultés ont leurs services désactivés.
+
+Menace associée :
+Si Telnet est activé et utilisé, identifiants et session peuvent être interceptés en clair ; xinetd ajoute une surface administrative.
+
+Argument de criticité :
+Un paquet installé n'est pas un service accessible. Dans l'état constaté, aucune transmission Telnet ni écoute n'est prouvée. La priorité augmenterait immédiatement en cas d'activation.
+
+Lien avec le script de notation :
+- Ligne 88 : telnetd absent.
+- Ligne 92 : xinetd absent.
+
+
+========================================================================
+17. Politique de dumps des processus privilégiés non conforme au test
+Criticité : Faible
+Référence de l'audit : KRNL-6000 : fs.suid_dumpable
+
+Constatation factuelle :
+fs.suid_dumpable=2 et kernel.core_pattern=core ont été confirmés. Le script exige fs.suid_dumpable=0.
+
+Menace associée :
+Selon la configuration de collecte, un dump peut conserver des informations sensibles.
+
+Argument de criticité :
+La valeur 2 est le mode suidsafe, et non le mode dangereux 1. Le core_pattern relatif observé ne remplit pas la condition de collecte des dumps privilégiés : aucune fuite de mémoire root n'a été démontrée. L'écart au barème est certain dans l'état initial, mais le risque réel reste faible.
+
+Lien avec le script de notation :
+- Ligne 111 : fs.suid_dumpable = 0.
+
+
+========================================================================
+18. Durée maximale des mots de passe non contraignante
+Criticité : Faible
+Référence de l'audit : AUTH-9286
+
+Constatation factuelle :
+login.defs contient PASS_MAX_DAYS=99999. passwd -S a également indiqué une durée maximale de 99999 pour alice et bob lors des vérifications initiales.
+
+Menace associée :
+Un identifiant compromis peut rester valide durablement si aucun autre mécanisme ne provoque son remplacement.
+
+Argument de criticité :
+L'absence de rotation périodique n'est pas une compromission. La robustesse et la révocation des secrets restent plus importantes ; le barème impose néanmoins une durée maximale de 90 jours.
+
+Lien avec le script de notation :
+- Ligne 66 : Politique d'expiration des mots de passe (PASS_MAX_DAYS <= 90).
+- Ligne 67 : Expiration appliquee aux comptes existants (alice, bob).
+
+
+========================================================================
+19. Bannière SSH contenant des informations non souhaitées
+Criticité : Informative
+Référence de l'audit : BANN-7130 ; contrôle D du script
+
+Constatation factuelle :
+Lynis marque /etc/issue.net WEAK. Lors des connexions SSH précédentes, le serveur a affiché une bannière contenant les termes « production » et « admin@ », explicitement recherchés par le script. Le contenu du fichier n'a pas été relu lors de ce filtrage.
+
+Menace associée :
+Divulgation de contexte et d'une indication de contact pouvant aider la reconnaissance.
+
+Argument de criticité :
+Impact informatif limité : cette bannière ne donne pas un accès au système. Le script contrôle l'absence de ces deux motifs dans /etc/issue.net, et non la présence d'un avertissement légal.
+
+Lien avec le script de notation :
+- Ligne 85 : Banniere ne divulguant plus d'information.
