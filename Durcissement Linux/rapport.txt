@@ -3,4 +3,9 @@ Ici je vais faire le rapport
 Partie 1 : Audit initial  
 
 
+On a commencé par faire un audit lynis que l'on a mit dans le fichier appelé "audit_lynis.txt" avec la commande "
+udo lynis audi system 2>&1 | tee audit_lynis.txt.
+
+Avec cet audit on peut voir la surface d'attaque globale ainsi que des suggestions de traçabilitée. Donc j'ai synthétisé les points à corriger dans un fichier audit_lynis_priorisé.txt
+
 
