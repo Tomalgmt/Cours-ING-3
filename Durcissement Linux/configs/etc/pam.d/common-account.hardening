@@ -1,0 +1,2 @@
+# Ligne a integrer dans /etc/pam.d/common-account.
+account required pam_faillock.so
