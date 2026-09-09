@@ -79,7 +79,8 @@ lcredit = 2     # nombre de minuscules minimum
 ocredit = 2     # nombre de caractères spéciaux minimum
 maxrepeat = 3   # nombre maximum de caractères répétés consécutivement
 
-ce qui fait une obligation de mot de passe avec 12 charactères minimum, avec au moins 2 majuscules, 2 minuscules, 2 chiffres et 2 caractères spéciaux.
+ce qui fait une obligation de mot de passe avec 12 charactères minimum, avec au moins 2 majuscules, 
+2 minuscules, 2 chiffres et 2 caractères spéciaux. (j'aurais du mettre quelque chose de plus permissif mais tant pis)
 
 On ajoute le controle PAM avec l'utilitaire qu'on a installé : ```sudo pam-auth-update``` puis on coche "Pwquality password strength checking" qui permet de vérifier la qualité du mot de passe 
 ou sinon en ajoutant la ligne suivante dans /etc/pam.d/common-password : 
@@ -125,7 +126,6 @@ Defaults log_output                     # journalisation des sorties de commande
 
 on enregistre et on lui donne les droits associés : sudo chmod 0440 /etc/sudoers.d/logging
 
-
 On passe a la configuration ssh : 
 
   [FAIL] PermitRootLogin desactive
@@ -152,20 +152,21 @@ AllowTcpForwarding no           # desactiver le forwarding TCP ce qui empeche de
 
 ATTENTION, après l'ajout de PasswordAuthentication on ne peut plus se connecter en ssh avec un mot de passe, il faut donc avoir une clé publique de l'hote présente
 dans le fichier ~/.ssh/authorized_keys de l'utilisateur pour pouvoir se connecter en ssh.
+Je peux ensuite me connecter avec la commande : 
+ssh -p 2222 moutsss@127.0.0.1
 
 Pour la bannière on modifie le fichier : sudo vim /etc/issue.net
 Par le message que l'on veut mettre dans mon cas j'ai mis "Accès réservé aux utilisateurs autorisés."
 
 
-On va passer maintenant aux services et paquets
+E. SERVICES ET PAQUETS
 
-  [FAIL] telnetd absent
-  [FAIL] rpcbind arrete/desactive
-  [FAIL] avahi-daemon arrete/desactive
-  [FAIL] nfs-kernel-server absent ou inactif
-  [FAIL] xinetd absent
-  [FAIL] Aucun port en ecoute hors 22/8080 sur 0.0.0.0
-
+[PASS] telnetd absent
+[PASS] rpcbind arrete/desactive&
+[PASS] avahi-daemon arrete/desactive
+[PASS] nfs-kernel-server absent ou inactif
+[PASS] xinetd absent
+[PASS] Aucun port en ecoute hors 22/8080 sur 0.0.0.0
 
 Ici on va stopper les services inutiles avec :
 sudo systemctl stop rpcbind rpcbind.socket avahi-daemon avahi-daemon.socket avahi-daemon.service nfs-server xinetd 2>/dev/null
@@ -178,14 +179,311 @@ Et il faut supprimer xinetd et telnet avec :
 On peut verifier qu'aucun port n'est en écoute sur 22/8080 sur 0.0.0.0 avec la commande : sudo ss -ltnp
 
 
-On va maintenant passer au PARE-FEU
-  [FAIL] Un pare-feu est actif (nftables ou ufw)
-  [FAIL] Politique par defaut restrictive en entree
-  [FAIL] Le pare-feu survit au redemarrage (unite activee)
+F. PARE-FEU
+[FAIL] Un pare-feu est actif (nftables ou ufw)
+[FAIL] Politique par defaut restrictive en entree
+[FAIL] Le pare-feu survit au redemarrage (unite activee)
 
-Ici on ajoute nftables avec sudo apt install nftables
+Ici on ajoute nftables avec sudo apt install nftables pour avoir un pare feu
+
+Je veux modifier le fichier /etc/nftables.conf pour ajouter une politique restrictive par defaut en entrée et sortie.
+Je comence par faire un .back (J'ai fais la meme chose sur certains fichiers de configuration avant).
+ 
+sudo cp /etc/nftables.conf /etc/nftables.conf.back
+
+Et on le modifie comme suit : 
 
 
+```typescript
+#!/usr/sbin/nft -f
 
-TODO : voir si le avahi dameon est toujours la après redémarrage (petit bug dessus)
-Puis 
+flush ruleset   # ça sert a vider les règles existantes avant d'ajouter les nouvelles 
+
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        iifname "lo" accept                   # permet d'accepter les input qui viennent de l'interface loopback (localhost)
+        ct state established,related accept   # permet d'accepter les input qui sont liés à une connexion déjà établie (exemple : si on a une connexion ssh ouverte, les paquets de cette connexion seront acceptés)
+        ct state invalid drop                 # permet de drop les input qui sont invalides (exemple : si on a un paquet qui ne correspond à aucune connexion existante)
+
+        ip protocol icmp accept               # permet d'accepter les input qui sont des paquets ICMP (exemple : ping)
+        ip6 nexthdr icmpv6 accept             # permet d'accepter les input qui sont des paquets ICMPv6 (exemple : ping6)
+
+        tcp dport 22 accept                   # permet d'accepter les input qui sont des paquets TCP destinés au port 22 (exemple : ssh)
+        tcp dport 8080 accept                 # permet d'accepter les input qui sont des paquets TCP destinés au port 8080 (exemple : service web)
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;  # policy drop dans chain forward permet de drop tous les paquets qui sont destinés à être forwardés (exemple : si on a un routeur qui reçoit des paquets destinés à un autre hôte, ces paquets seront dropés)
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept; # policy accept dans chain output permet d'accepter tous les paquets qui sont destinés à être envoyés (exemple : si on a un service qui envoie des paquets, ces paquets seront acceptés)
+    }
+}
+```
+
+Après ça on charge les règles : 
+sudo nft -f /etc/nftables.conf
+
+Puis on active le service au maintenant et au démarrage avec :
+sudo systemctl enable --now nftables
+
+On peut aussi check les paramètres qu'on a ajouté avec :  
+sudo nft list ruleset
+
+
+G. PERMISSIONS ET SUID 
+
+  [FAIL] /etc/shadow non lisible par les autres, non modifiable par le groupe
+  [FAIL] /srv/metier n'est plus en 777
+  [FAIL] /opt/scripts n'est plus en 777
+  [FAIL] Binaire SUID superflu /usr/local/bin/find-suid retire
+  [PASS] Aucun fichier world-writable dans /etc
+
+On va commencer par vérifier les permissions des fichiers sensibles avec la commande :
+
+ls -l /etc/shadow /srv/metier /opt/scripts /usr/local/bin/find-suid
+
+On a : 
+
+moutsss@Durcissement:~/tp$ ls -l /etc/shadow /usr/local/bin/find-suid
+ls -ld /srv/metier /opt/scripts /usr/local/bin/find-suid
+
+-rw-rw-r-- 1 root shadow   1546 Sep  9 00:00 /etc/shadow
+-rwsr-xr-x 1 root root   224848 Sep  8 13:47 /usr/local/bin/find-suid
+-rwxrwxrwx 1 root root 85 Sep  8 13:47 backup.sh
+-rw-r--r-- 1 root root   3 Sep  8 13:47 health
+-rw-r--r-- 1 root root 175 Sep  8 13:47 index.html
+
+ce n'est pas normal on veut changer avec : 
+
+```
+sudo chown root:shadow /etc/shadow
+sudo chmod 640 /etc/shadow
+sudo chown -R root:root /srv/metier                     # modifie le propriétaire et le groupe du dossier /srv/metier et de tous ses fichiers et dossiers enfants en root:root
+sudo chmod 755 /srv/metier                              # modifie en chmod 755 le dossier /srv/metier
+sudo find /srv/metier -type d -exec chmod 755 {} +      # modifie en chmod 755 tous les dossiers de /srv/metier, 755 pour que les utilisateurs puissent entrer dans le dossier sans le modifier
+sudo find /srv/metier -type f -exec chmod 644 {} +      # modifie en chmod 644 tous les fichiers de /srv/metier, 644 pour que les utilisateurs puissent lire les fichiers mais pas les modifier
+# comme /srv/metier on veyt donner des droits similaires sauf pour le backup, on veut que personne sauf le root puisse voir / modifier / executer  
+sudo chown -R root:root /opt/scripts
+sudo chmod 755 /opt/scripts
+sudo find /opt/scripts -type d -exec chmod 755 {} +    
+sudo find /opt/scripts -type f -exec chmod 750 {} +
+```
+
+On a maintenant :
+pour /etc/shadow root a les droits de lecture et d'écriture, le groupe (shadow) a les droits de lecture et les autres n'ont aucun droit.
+Pour le dossier /srv/metier root a les droits de lecture, d'écriture et d'exécution, le groupe (root) a les droits de lecture et d'exécution et les autres ont les droits de lecture et peuvent entrer dans le dossier.
+C'est quoi le groupe shadow ? Le groupe shadow c'est 
+et 
+-rw-r----- 1 root shadow   1546 Sep  9 00:00 /etc/shadow
+drwxr-xr-x 2 root root 4096 Sep  8 13:32 /srv/metier
+-rw-r--r-- 1 root root   3 Sep  8 13:47 health
+-rw-r--r-- 1 root root 175 Sep  8 13:47 index.html
+drwxr-xr-x 2 root root 4096 Sep  8 13:32 /opt/scripts/
+-rwxr-x--- 1 root root 85 Sep  8 13:47 backup.sh
+
+Avec l'audit on voit qu'on a un binaire superflu donc le hash donne le meme que find : /usr/local/bin/find-suid?
+On va juste le garder mais le "desactiver" pour voir si il est necessaire a l'application avec :
+
+sudo mkdir -p /root/prison
+sudo mv /usr/local/bin/find-suid /root/prison/find-suid.disabled
+sudo chmod 700 /root/prison/find-suid.disabled
+
+Après ça on a toujours accès a l'application donc : 
+
+moutsss@Durcissement:~/tp$ curl http://127.0.0.1:8080/health
+OK
+moutsss@Durcissement:~/tp$ sudo rm /root/prison/find-suid.disabled
+
+
+H. NOYAU (sysctl)
+  [FAIL] kernel.randomize_va_space = 2
+  [FAIL] kernel.dmesg_restrict = 1
+  [FAIL] kernel.kptr_restrict >= 1
+  [FAIL] fs.suid_dumpable = 0
+  [FAIL] net.ipv4.ip_forward = 0
+  [FAIL] net.ipv4.tcp_syncookies = 1
+  [FAIL] accept_redirects = 0 (all et default)
+  [FAIL] accept_source_route = 0 (all et default)
+  [FAIL] Les reglages survivent au reboot (fichier persistant present)
+
+  On va passer aux reglages noyau en créant un fichier de durcissement : 
+
+  sudo vim /etc/sysctl.d/99-z-durcissement.conf
+
+  Auquel on ajoute : 
+
+# Randomisation de l'espace d'adressage
+kernel.randomize_va_space = 2                           # 2 pour activer la randomisation de l'espace d'adressage (ASLR) pour les programmes et les bibliothèques partagées
+# Restriction des informations du noyau
+kernel.dmesg_restrict = 1                               # 1 pour restreindre l'accès aux messages du noyau aux utilisateurs privilégiés
+kernel.kptr_restrict = 2                                # 2 pour ne pas afficher les adresses mémoire dans les messages du noyau
+# Désactivation des dumps des programmes privilégiés
+fs.suid_dumpable = 0                                    # 0 pour désactiver les dumps des programmes SUID (Set User ID) et SGID (Set Group ID) pour éviter la fuite d'informations sensibles
+# Cette machine n'est pas un routeur
+net.ipv4.ip_forward = 0                                 # 0 pour désactiver le routage IP (la machine ne doit pas agir comme un routeur c'est un endpoint)
+# Protection contre les SYN floods
+net.ipv4.tcp_syncookies = 1                             # 1 pour activer les cookies SYN pour protéger contre les attaques par déni de service (DoS) basées sur l'épuisement des ressources du serveur
+                                                        # une mise à 0 permettrait de désactiver cette protection et de rendre le serveur vulnérable aux attaques SYN flood           
+# Refus des redirections ICMP
+net.ipv4.conf.all.accept_redirects = 0                  # 0 pour refuser les redirections ICMP
+net.ipv4.conf.default.accept_redirects = 0
+# Refus du routage imposé par la source                 
+net.ipv4.conf.all.accept_source_route = 0               # 0 pour refuser le routage imposé par la source (source routing) pour éviter les attaques de type "man-in-the-middle" et les tentatives de contournement des règles de pare-feu
+net.ipv4.conf.default.accept_source_route = 0
+
+Puis on applique les configurations : sudo sysctl --system et on peut vérifier 
+
+
+I. CONTROLE D'ACCES OBLIGATOIRE
+  [FAIL] AppArmor actif et profils charges
+  [FAIL] Aucun profil laisse en mode complain
+  [FAIL] Le service metier est couvert par un profil en enforce
+  [FAIL] Confinement systemd de l'unite metier (NoNewPrivileges)
+
+Pour cette partie on va installer apparmor avec sudo apt install -y apparmor apparmor-utils qui permet de mettre en place un 
+contrôle d'accès obligatoire (MAC) pour restreindre les actions des processus et des utilisateurs sur le système.
+
+Le lancer au démarrage et maintenant avec :
+sudo systemctl enable --now apparmor
+
+On peut vérifier sa présence avec : 
+```
+systemctl is-active apparmor
+systemctl is-enabled apparmor
+sudo aa-status                  # voir les profils chargés et leur statut (enforce ou complain)
+```
+
+On veut maintenant configurer apparmor pour restreindre les actions du service metier (nginx) sur le système.
+
+Dans un premier terminal je lance la création interactive du profil :
+sudo aa-genprof /usr/sbin/nginx     # permet de générer un profil pour le binaire nginx et de le mettre en enforce (mode restrictif) pour restreindre les actions de nginx sur le système.
+
+Puis dans un second terminal je provoque les actions nginx "nomales" pour que apparmor puisse les enregistrer et les autoriser dans le profil.
+
+```
+sudo nginx -t
+sudo systemctl restart nginx
+curl -fsS http://127.0.0.1:8080/
+curl -fsS http://127.0.0.1:8080/health
+sudo systemctl reload nginx
+curl -fsS http://127.0.0.1:8080/
+curl -fsS http://127.0.0.1:8080/health
+```
+
+Une fois les actions terminées je reviens dans le premier terminal et j'analyse les actions effectuées avec (S) et je termine et j'autorise le profile avec F 
+Je peux maintenant voir le status de mes profile avec sudo aa-status et je peux voir que le profil est en enforce et que le nginx est couvert par un profil en enforce.
+
+
+J. JOURNALISATION ET INTEGRITE
+  [FAIL] auditd installe et actif
+  [FAIL] Regles auditd chargees (> 5)
+  [FAIL] Journal persistant sur disque
+  [PASS] Journal dimensionne explicitement (SystemMaxUse)
+  [FAIL] Outil d'integrite fichiers present (AIDE ou equivalent)
+  [FAIL] Base de reference d'integrite initialisee
+
+On va commencer par installer et activer auditd : 
+```
+sudo apt install -y auditd audispd-plugins
+sudo systemctl enable --now auditd
+# vérification : 
+systemctl is-active auditd
+systemctl is-enabled auditd
+```
+
+Puis on va créer des règles d'audit : 
+```
+sudo vim /etc/audit/rules.d/50-hardening.rules
+```
+Et on ajoute les règles suivantes :
+```
+-w /etc/passwd -p wa -k identity        # permet de surveiller les modifications du fichier /etc/passwd (ajout, suppression ou modification d'utilisateurs) et de les enregistrer dans le journal d'audit avec le mot-clé "identity"
+-w /etc/shadow -p wa -k identity        # pareil mais pour /etc/shadow (modification des mots de passe)
+-w /etc/group -p wa -k identity         # pareil mais pour /etc/group (modification des groupes)
+-w /etc/gshadow -p wa -k identity       # pareil mais pour /etc/gshadow (modification des groupes et de leurs mots de passe)
+-w /etc/sudoers -p wa -k privilege      # permet de surveiller les modifications du fichier /etc/sudoers (ajout, suppression ou modification des règles sudo) et de les enregistrer dans le journal d'audit avec le mot-clé "privilege"
+-w /etc/sudoers.d/ -p wa -k privilege   # pareil mais pour le dossier /etc/sudoers.d/
+-w /etc/ssh/sshd_config -p wa -k ssh    # permet de surveiller les modifications du fichier /etc/ssh/sshd_config (ajout, suppression ou modification des règles ssh) et de les enregistrer dans le journal d'audit avec le mot-clé "ssh"
+-w /etc/ssh/sshd_config.d/ -p wa -k ssh # pareil mais pour le dossier /etc/ssh/sshd_config.d/
+```
+
+Ensuite on charge et affiche les regles : 
+```
+sudo augenrules --load
+sudo auditctl -l
+```
+
+Pour avoir un journal persistant on va créer un fichier de configuration : 
+```
+sudo mkdir -p /etc/systemd/journald.conf.d
+sudo vim /etc/systemd/journald.conf.d/99-persistent.conf
+``` 
+
+Dans lequel on va écrire : 
+```
+[Journal]
+Storage=persistent  # stocke les journaux sur le disque pour la persistance
+SystemMaxUse=200M   #limite la taille maximale du journal à 200 Mo pour éviter de remplir le disque
+```
+
+Après ça on créer le répertoire de stockage et on redémarre le service :
+```
+sudo systemd-tmpfiles --create --prefix /var/log/journal
+sudo systemctl restart systemd-journald
+sudo journalctl --flush       # permet de vider le journal en mémoire et de l'écrire sur le disque
+```
+
+On veut aussi ajouter et initialiser AIDE qui permet de vérifier l'intégrité des fichiers du système en comparant les fichiers actuels avec une base de référence. 
+On l'installe avec :
+```
+sudo apt install -y aide aide-common
+sudo aideinit   # permet d'initialiser la base de référence d'intégrité en créant un fichier de base de données AIDE à partir des fichiers actuels du système
+```
+
+
+Ensuite on peut vérifier la présence de la base de référence d'intégrité avec :
+```
+sudo aide --check
+sudo ls -lh /var/lib/aide/aide.db
+```
+
+On a maintenant un systeme de journalisation et d'intégrité fonctionnel avec auditd et AIDE.
+
+
+K. MISES A JOUR
+  [PASS] Aucune mise a jour de securite en attente
+  [FAIL] Mises a jour automatiques configurees
+  [FAIL] Mises a jour automatiques reellement activees
+
+Les mises à jour automatiques sont les dernieres etapes du durcissement, pour empecher des logiciels obsoletes d'etre installés et de rendre le systeme vulnérable.
+
+Il existe un package "unattended-upgrades" qui permet de configurer les mises à jour automatiques sur un système Debian/Ubuntu.
+On va l'installer avec :
+```
+sudo apt install -y unattended-upgrades
+```
+
+Et on va le configurer avec un fichier de configuration :
+```
+sudo vim /etc/apt/apt.conf.d/20auto-upgrades
+```
+
+Dans lequel on écrit :
+```
+APT::Periodic::Update-Package-Lists "1";      # permet de mettre à jour la liste des paquets disponibles tous les jours
+APT::Periodic::Unattended-Upgrade "1";        # permet d'installer automatiquement les mises à jour de sécurité tous les jours (les mises à jour autorisées de unattended-upgrades)
+APT::Periodic::AutocleanInterval "7";         # permet de nettoyer automatiquement le cache des paquets tous les 7 jours
+```
+
+Enfin on active le minuteur apt pour que les mises à jour automatiques soient réellement activées avec :
+```
+sudo systemctl enable --now apt-daily.timer
+sudo systemctl enable --now apt-daily-upgrade.timer
+```
+
+Pour check la configuration : 
+```
