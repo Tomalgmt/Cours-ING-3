@@ -15,8 +15,21 @@
 #   - ajout des controles manquants correspondant a des etapes notees
 #     (authentification par cle, journalisation sudo, confinement
 #     systemd de l'unite metier).
+#
+#  Revision 2026-09-09 (VERSION A UTILISER) :
+#   - PermitRootLogin : "sshd -T" normalise "prohibit-password" en
+#     "without-password". L'ancien motif recalait une configuration
+#     correcte ;
+#   - unattended-upgrades : l'ancien motif exigeait un guillemet apres
+#     "Unattended-Upgrade" alors que la syntaxe APT n'en a pas. Le
+#     controle ne pouvait jamais passer ;
+#   - base AIDE : un fichier aide.db.new de 0 octet etait accepte.
+#     On exige desormais une base non vide.
+#
+#  La version est affichee en tete de chaque execution.
 # =====================================================================
 set -u
+VERSION="2026-09-09"
 PASS=0; FAIL=0; TOTAL=0
 ok(){ echo "  [PASS] $1"; PASS=$((PASS+1)); TOTAL=$((TOTAL+1)); }
 ko(){ echo "  [FAIL] $1"; FAIL=$((FAIL+1)); TOTAL=$((TOTAL+1)); }
@@ -24,6 +37,10 @@ chk(){ if eval "$2" >/dev/null 2>&1; then ok "$1"; else ko "$1"; fi; }
 sec(){ echo; echo "=== $1 ==="; }
 
 [ "$(id -u)" -ne 0 ] && { echo "A lancer en root."; exit 1; }
+
+echo "======================================================"
+echo " check-debian.sh   version $VERSION"
+echo "======================================================"
 
 # --- Test du service metier, sans dependance a un paquet installable ---
 # bash sait ouvrir une socket TCP tout seul : aucun binaire externe requis.
@@ -75,7 +92,7 @@ chk "Syntaxe sudoers valide" "visudo -c"
 chk "Journalisation des commandes sudo activee" "grep -rqE 'log_(input|output)|logfile=' /etc/sudoers /etc/sudoers.d/"
 
 sec "D. SSH"
-chk "PermitRootLogin desactive" "sshd -T | grep -qiE '^permitrootlogin (no|prohibit-password)'"
+chk "PermitRootLogin desactive" "sshd -T | grep -qiE '^permitrootlogin (no|prohibit-password|without-password|forced-commands-only)'"
 chk "Authentification par mot de passe desactivee" "sshd -T | grep -qi '^passwordauthentication no'"
 chk "MaxAuthTries <= 4" "[ \$(sshd -T | awk '/^maxauthtries/{print \$2}') -le 4 ]"
 chk "LoginGraceTime <= 60" "[ \$(sshd -T | awk '/^logingracetime/{print \$2}') -le 60 ]"
@@ -129,18 +146,19 @@ chk "Regles auditd chargees (> 5)" "[ \$(auditctl -l 2>/dev/null | wc -l) -gt 5 
 chk "Journal persistant sur disque" "[ -d /var/log/journal ] && ! grep -rqiE '^[[:space:]]*Storage[[:space:]]*=[[:space:]]*volatile' /etc/systemd/journald.conf /etc/systemd/journald.conf.d/ 2>/dev/null"
 chk "Journal dimensionne explicitement (SystemMaxUse)" "grep -rqiE '^[[:space:]]*SystemMaxUse[[:space:]]*=' /etc/systemd/journald.conf /etc/systemd/journald.conf.d/ 2>/dev/null"
 chk "Outil d'integrite fichiers present (AIDE ou equivalent)" "command -v aide || command -v tripwire"
-chk "Base de reference d'integrite initialisee" "ls /var/lib/aide/aide.db* >/dev/null 2>&1 || ls /var/lib/tripwire/*.twd >/dev/null 2>&1"
+chk "Base de reference d'integrite initialisee" "[ -s /var/lib/aide/aide.db ] || [ -s /var/lib/aide/aide.db.gz ] || ls /var/lib/tripwire/*.twd >/dev/null 2>&1"
 
 sec "K. MISES A JOUR"
 chk "Aucune mise a jour de securite en attente" "[ \$(apt-get -s upgrade 2>/dev/null | grep -ci '^Inst.*security') -eq 0 ]"
 chk "Mises a jour automatiques configurees" "dpkg -l | grep -qE '^ii +unattended-upgrades'"
-chk "Mises a jour automatiques reellement activees" "grep -rqE 'Unattended-Upgrade\"[[:space:]]*\"1\"' /etc/apt/apt.conf.d/ 2>/dev/null"
+chk "Mises a jour automatiques reellement activees" "grep -rqE 'Unattended-Upgrade\"?[[:space:]]*\"1\"' /etc/apt/apt.conf.d/ 2>/dev/null"
 
 echo
 echo "======================================================"
 echo " Controles reussis : $PASS / $TOTAL"
 SCORE=$(( PASS * 60 / TOTAL ))
 echo " Score technique   : $SCORE / 60"
+echo " (script version $VERSION)"
 if [ "$METIER" -eq 0 ]; then
   echo " ATTENTION : service metier HS -> note finale plafonnee a 08/20"
 fi
