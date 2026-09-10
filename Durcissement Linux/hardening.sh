@@ -50,6 +50,51 @@ if ! id "$ADMIN_USER" >/dev/null 2>&1; then
     exit 1
 fi
 
+SSH_DIR="/home/$ADMIN_USER/.ssh"
+AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+
+# Le collage de la cle exige les Guest Additions et une session Xorg.
+# Cette verification est inutile lorsque la cle est deja installee.
+if [ ! -s "$AUTHORIZED_KEYS" ]; then
+    ADMIN_UID="$(id -u "$ADMIN_USER")"
+    GRAPHICAL_SESSION="$(loginctl list-sessions --no-legend 2>/dev/null \
+        | awk -v uid="$ADMIN_UID" '$2 == uid && $4 ~ /^seat/ { print $1; exit }')"
+    SESSION_TYPE=""
+
+    if [ -n "$GRAPHICAL_SESSION" ]; then
+        SESSION_TYPE="$(loginctl show-session "$GRAPHICAL_SESSION" \
+            -p Type --value 2>/dev/null || true)"
+    fi
+
+    if ! command -v VBoxClient >/dev/null 2>&1 \
+        || [ "$SESSION_TYPE" != x11 ] \
+        || ! pgrep -u "$ADMIN_UID" -f 'VBoxClient.*--clipboard' >/dev/null 2>&1; then
+        echo
+        echo "[PRE-REQUIS] Le presse-papiers VirtualBox n'est pas pret."
+        echo "Sur l'hote, ouvrez le menu de la VM :"
+        echo "  1. Peripheriques > Inserer l'image CD des Additions invite"
+        echo "  2. Peripheriques > Presse-papiers partage > Bidirectionnel"
+        echo
+        echo "Dans la VM, executez ensuite :"
+        echo "  sudo apt-get update"
+        echo "  sudo apt-get install -y build-essential dkms linux-headers-\$(uname -r)"
+        echo "  sudo mkdir -p /mnt/vboxga"
+        echo "  sudo mount -o ro /dev/sr0 /mnt/vboxga"
+        echo "  sudo sed -ri 's/^[#[:space:]]*WaylandEnable=.*/WaylandEnable=false/' /etc/gdm3/daemon.conf"
+        echo "  sudo sh /mnt/vboxga/VBoxLinuxAdditions.run"
+        echo "  sudo reboot"
+        echo
+        echo "Apres le redemarrage, relancez sudo ./hardening.sh."
+        echo "Recreez ensuite l'instantane de baseline pour conserver ces prerequis."
+        exit 1
+    fi
+
+    echo
+    echo "Avant de continuer, activez dans la fenetre VirtualBox :"
+    echo "Peripheriques > Presse-papiers partage > Bidirectionnel"
+    IFS= read -r -p "Appuyez sur Entree lorsque le presse-papiers est active : "
+fi
+
 BACKUP_DIR="/root/hardening-backups/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
@@ -162,13 +207,11 @@ visudo -c
 echo "=== D. SSH ==="
 
 # Ne pas desactiver le mot de passe avant d'avoir installe une cle publique.
-SSH_DIR="/home/$ADMIN_USER/.ssh"
-AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
-
 if [ ! -s "$AUTHORIZED_KEYS" ]; then
     echo "Aucune cle publique n'est installee pour $ADMIN_USER."
     echo "Dans VirtualBox, activez d'abord :"
     echo "Peripheriques > Presse-papiers partage > Bidirectionnel"
+    echo "Les Guest Additions doivent etre installees et la session graphique ouverte."
     echo "Copiez ensuite la ligne complete du fichier .pub depuis l'hote."
 
     install -d -o "$ADMIN_USER" -g "$(id -gn "$ADMIN_USER")" -m 0700 "$SSH_DIR"

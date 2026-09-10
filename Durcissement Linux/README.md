@@ -35,8 +35,14 @@ sudo apt install -y build-essential dkms linux-headers-$(uname -r)
 # Après insertion de l’image CD des Guest Additions depuis VirtualBox :
 sudo mount /dev/sr0 /mnt
 sudo sh /mnt/VBoxLinuxAdditions.run
+# VirtualBox partage le presse-papiers de manière fiable dans une session Xorg :
+sudo sed -ri 's/^[#[:space:]]*WaylandEnable=.*/WaylandEnable=false/' /etc/gdm3/daemon.conf
 sudo reboot
 ```
+
+Après le redémarrage, j’ai vérifié que la session utilisait Xorg et que le client de presse-papiers était lancé avec `loginctl show-session` et `pgrep -af 'VBoxClient.*clipboard'`. Je clique ensuite dans le terminal de la VM et j’utilise `Ctrl+Maj+V` pour coller le texte copié sur l’hôte.
+
+J’ai recréé l’instantané de baseline après cette installation. Ainsi, une restauration conserve les Guest Additions et la session Xorg ; il me reste seulement à vérifier que `Périphériques -> Presse-papiers partagé -> Bidirectionnel` est toujours sélectionné dans VirtualBox.
 
 ### Accès SSH depuis l’hôte
 
@@ -64,6 +70,12 @@ timedatectl status
 ```
 
 Dans `hardening.sh`, ces commandes sont exécutées dès le début, juste après la vérification des droits root et avant les sauvegardes ou `apt-get update`. Le script attend que `NTPSynchronized` vaille `yes` et s’arrête avec un message explicite si l’horloge n’a pas pu être corrigée.
+
+### Prérequis contrôlé par le script
+
+Sur une restauration vierge de la baseline, la clé SSH et le client graphique VirtualBox peuvent être absents. Avant de commencer le durcissement, `hardening.sh` vérifie donc la présence de `VBoxClient`, d’une session Xorg et du processus `VBoxClient --clipboard`. Si l’un de ces éléments manque, le script affiche les étapes d’installation des Guest Additions, demande un redémarrage et s’arrête. Je relance alors le script après le redémarrage.
+
+Lorsque ces prérequis sont présents mais que la clé SSH manque encore, le script me demande d’activer `Périphériques -> Presse-papiers partagé -> Bidirectionnel` dans la fenêtre VirtualBox. J’appuie ensuite sur Entrée pour poursuivre. La demande de collage de la clé n’apparaît qu’après ce contrôle.
 
 Après ça on peut suivre le TP et commencer par installer openssh-server si ce n’est pas déjà fait ou lancer le script prepare-debian.sh
 
@@ -639,19 +651,6 @@ J’ai redémarré la VM afin de vérifier la persistance :
 
 ```bash
 sudo reboot
-```
-
-Après le redémarrage, j’ai vérifié que les composants suivants étaient actifs :
-
-```text
-ssh                         active
-nginx                       active
-nftables                    active
-auditd                      active
-apparmor                    active
-unattended-upgrades         active
-apt-daily.timer             active
-apt-daily-upgrade.timer     active
 ```
 
 J’ai également vérifié que le service métier répondait en HTTP 200 et que la base AIDE de 54 Mo était toujours présente.
