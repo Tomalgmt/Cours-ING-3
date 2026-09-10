@@ -144,12 +144,19 @@ fi
 id deploy >/dev/null 2>&1 && usermod -s /usr/sbin/nologin deploy
 id sauvegarde >/dev/null 2>&1 && usermod -s /usr/sbin/nologin sauvegarde
 
-# Politique d'expiration pour les futurs comptes.
+# Politique d'expiration pour les futurs comptes. Les anciennes directives
+# actives sont retirees afin de ne conserver qu'une seule valeur de chaque type.
 sed -ri \
-    -e 's/^[#[:space:]]*PASS_MAX_DAYS[[:space:]]+.*/PASS_MAX_DAYS   90/' \
-    -e 's/^[#[:space:]]*PASS_MIN_DAYS[[:space:]]+.*/PASS_MIN_DAYS   1/' \
-    -e 's/^[#[:space:]]*PASS_WARN_AGE[[:space:]]+.*/PASS_WARN_AGE   14/' \
+    -e '/^[[:space:]]*PASS_MAX_DAYS[[:space:]]+/d' \
+    -e '/^[[:space:]]*PASS_MIN_DAYS[[:space:]]+/d' \
+    -e '/^[[:space:]]*PASS_WARN_AGE[[:space:]]+/d' \
     /etc/login.defs
+printf '\n' >> /etc/login.defs
+cat "$CONFIG_DIR/login.defs.durcissement" >> /etc/login.defs
+
+# Arret immediat si la politique attendue n'est pas effectivement appliquee.
+awk '$1 == "PASS_MAX_DAYS" { nombre++; valeur=$2 }
+     END { exit !(nombre == 1 && valeur <= 90) }' /etc/login.defs
 
 # Application aux comptes deja existants.
 for user in moutsss alice bob; do

@@ -27,20 +27,7 @@ Pour simplifier le transfert de fichiers et de commandes entre l’hôte et la V
 
 J’ai installé les VirtualBox Guest Additions dans la VM, puis activé Périphériques-> Presse-papiers partagé-> Bidirectionnel :
 
-J’effectue ce réglage avant de lancer `hardening.sh`, car le script peut me demander de coller la clé publique SSH de l’hôte pendant son exécution.
-
-Puis j'ai installé les paquets nécessaires à la compilation et aux modules du noyau, j'ai monté l'image CD des Guest Additions (les Guest Addition c'est des outils pour améliorer l'expérience utilisateur dans VirtualBox), puis j’ai exécuté le script d’installation des Guest Additions et redémarré la VM :
-```bash
-sudo apt install -y build-essential dkms linux-headers-$(uname -r)
-# Après insertion de l’image CD des Guest Additions depuis VirtualBox :
-sudo mount /dev/sr0 /mnt
-sudo sh /mnt/VBoxLinuxAdditions.run
-# VirtualBox partage le presse-papiers de manière fiable dans une session Xorg :
-sudo sed -ri 's/^[#[:space:]]*WaylandEnable=.*/WaylandEnable=false/' /etc/gdm3/daemon.conf
-sudo reboot
-```
-
-Après le redémarrage, j’ai vérifié que la session utilisait Xorg et que le client de presse-papiers était lancé avec `loginctl show-session` et `pgrep -af 'VBoxClient.*clipboard'`. Je clique ensuite dans le terminal de la VM et j’utilise `Ctrl+Maj+V` pour coller le texte copié sur l’hôte.
+Puis j'ai installé les paquets nécessaires à la compilation et aux modules du noyau, j'ai monté l'image CD des Guest Additions (les Guest Addition c'est des outils pour améliorer l'expérience utilisateur dans VirtualBox), puis j’ai exécuté le script d’installation des Guest 
 
 J’ai recréé l’instantané de baseline après cette installation. Ainsi, une restauration conserve les Guest Additions et la session Xorg ; il me reste seulement à vérifier que `Périphériques -> Presse-papiers partagé -> Bidirectionnel` est toujours sélectionné dans VirtualBox.
 
@@ -69,7 +56,7 @@ sudo systemctl restart systemd-timesyncd.service
 timedatectl status
 ```
 
-Dans `hardening.sh`, ces commandes sont exécutées dès le début, juste après la vérification des droits root et avant les sauvegardes ou `apt-get update`. Le script attend que `NTPSynchronized` vaille `yes` et s’arrête avec un message explicite si l’horloge n’a pas pu être corrigée.
+Dans `hardening.sh`, ces commandes sont exécutées dès le début, juste après la vérification des droits root et avant les sauvegardes ou `apt-get update`. Le script attend que `NTPSynchronized` vaut `yes` et s’arrête avec un message explicite si l’horloge n’a pas pu être corrigée.
 
 ### Prérequis contrôlé par le script
 
@@ -154,13 +141,15 @@ sudo chage -l alice
 alice P 2026-09-08 0 99999 7 -1
 ```
 
-J’ai défini la politique par défaut des futurs comptes dans `/etc/login.defs` :
+J’ai défini la politique par défaut des futurs comptes dans `/etc/login.defs`. 
 
 ```text
 PASS_MAX_DAYS   90
 PASS_MIN_DAYS   1
 PASS_WARN_AGE   14
 ```
+
+La directive `PASS_MAX_DAYS 90` impose le changement du mot de passe au plus tard après 90 jours et satisfait le contrôle `PASS_MAX_DAYS <= 90`.
 
 `PASS_MIN_DAYS` impose un délai d’un jour avant un nouveau changement. `/etc/login.defs` n’agit que sur les comptes créés par la suite. J’ai alors appliqué la politique aux comptes existants avec `chage` :
 
