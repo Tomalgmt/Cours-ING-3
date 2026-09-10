@@ -21,15 +21,16 @@ Dans ce rapport, je présente l’audit et le durcissement que j’ai réalisés
 
 ## Mise en place de la VM
 
-### Presse-papiers partagé
+une fois la VM lancée et les scripts de preparation et de dégradation de la VM lancée, on peut commencer le durcissement manuel ou alors faire 
+```bash
+cd ~Cours-ING-3/Durcissement\ Linux
+sudo chmod +x hardening.sh
+sudo ./hardening.sh
+```
 
-Pour simplifier le transfert de fichiers et de commandes entre l’hôte et la VM, j’ai activé le presse-papiers bidirectionnel dans VirtualBox. Cela permet de copier-coller du texte entre les deux environnements.
+ATTENTION ça ne va peut etre pas fonctionner du premier coup et parfois faire des erreures d'accès a des adresses mémoire, mais il faut persister, suivre les indications et relancer la VM manuellement si besoin. Le mot de passe du compte Moutsss au debut est 2003.
 
-J’ai installé les VirtualBox Guest Additions dans la VM, puis activé Périphériques-> Presse-papiers partagé-> Bidirectionnel :
-
-Puis j'ai installé les paquets nécessaires à la compilation et aux modules du noyau, j'ai monté l'image CD des Guest Additions (les Guest Addition c'est des outils pour améliorer l'expérience utilisateur dans VirtualBox), puis j’ai exécuté le script d’installation des Guest 
-
-J’ai recréé l’instantané de baseline après cette installation. Ainsi, une restauration conserve les Guest Additions et la session Xorg ; il me reste seulement à vérifier que `Périphériques -> Presse-papiers partagé -> Bidirectionnel` est toujours sélectionné dans VirtualBox.
+Preparez aussi une clé ssh à pouvoir coller dans la VM pour pouvoir s'y connecter depuis l'hôte. Le script va vous demander de coller la clé publique ainsi que d'autres instructions.
 
 ### Accès SSH depuis l’hôte
 
