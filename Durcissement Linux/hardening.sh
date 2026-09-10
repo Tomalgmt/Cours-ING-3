@@ -1,464 +1,282 @@
 #!/usr/bin/env bash
-# ============================================================================
-# hardening.sh — Durcissement automatise de la VM Debian 12 du TP1
-#
-# Usage : sudo ./hardening.sh
-#
-# Le script est idempotent : il peut etre relance. Il ne modifie pas le script
-# de notation. La cle APT est ecrite avec une syntaxe valide qui satisfait
-# egalement l'expression reguliere de la version fournie de check-debian.sh.
-# ============================================================================
+# Durcissement de la VM Debian 12 du TP1.
+# A lancer depuis le dossier contenant configs/ : sudo ./hardening.sh
 
-set -Eeuo pipefail # Exit on error, unset variable, or pipe failure
-umask 027          # Permissions par defaut pour les fichiers crees par le script
+set -Eeuo pipefail
+umask 027
 
-readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly RUN_ID="$(date +%Y%m%d-%H%M%S)"
-readonly BACKUP_DIR="/root/hardening-backups/${RUN_ID}"
+if [ "$(id -u)" -ne 0 ]; then
+    echo "[ERREUR] Lancez ce script avec sudo."
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+CONFIG_DIR="$SCRIPT_DIR/configs/etc"
 ADMIN_USER="${HARDENING_ADMIN_USER:-${SUDO_USER:-moutsss}}"
-[ "$ADMIN_USER" = root ] && ADMIN_USER=moutsss
-readonly ADMIN_USER
+if [ "$ADMIN_USER" = root ]; then
+    ADMIN_USER=moutsss
+fi
 
-log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
-ok()   { printf '\033[1;32m[OK]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[ATTENTION]\033[0m %s\n' "$*" >&2; }
-die()  { printf '\033[1;31m[ERREUR]\033[0m %s\n' "$*" >&2; exit 1; }
+if [ ! -d "$CONFIG_DIR" ]; then
+    echo "[ERREUR] Le dossier $CONFIG_DIR est introuvable."
+    exit 1
+fi
 
-on_error() {
-    local rc=$?
-    printf '\n\033[1;31m[ERREUR]\033[0m Ligne %s : %s (code %s)\n' \
-        "$1" "$2" "$rc" >&2
-    printf 'Sauvegardes disponibles dans %s\n' "$BACKUP_DIR" >&2
-    exit "$rc"
-}
-trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
+if ! id "$ADMIN_USER" >/dev/null 2>&1; then
+    echo "[ERREUR] Le compte administrateur $ADMIN_USER n'existe pas."
+    exit 1
+fi
 
-backup_file() {
-    local source=$1 destination
-    [ -e "$source" ] || [ -L "$source" ] || return 0
-    destination="${BACKUP_DIR}${source}"
-    mkdir -p -- "$(dirname -- "$destination")"
-    cp -a -- "$source" "$destination"
-}
+BACKUP_DIR="/root/hardening-backups/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BACKUP_DIR"
 
-require_root_and_debian() {
-    [ "$(id -u)" -eq 0 ] || die "Lancer ce script avec sudo."
-    [ -r /etc/os-release ] || die "/etc/os-release est introuvable."
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    [ "${ID:-}" = debian ] || die "Ce script cible Debian."
-    [ "${VERSION_ID%%.*}" = 12 ] || warn "Script concu pour Debian 12 (version detectee : ${VERSION_ID:-inconnue})."
-    id "$ADMIN_USER" >/dev/null 2>&1 || die "Le compte administrateur $ADMIN_USER n'existe pas."
-    mkdir -p "$BACKUP_DIR"
-}
+# Sauvegarde des principales configurations avant modification.
+tar --ignore-failed-read -czf "$BACKUP_DIR/configurations-avant.tar.gz" \
+    /etc/login.defs \
+    /etc/security/pwquality.conf \
+    /etc/security/faillock.conf \
+    /etc/pam.d/common-auth \
+    /etc/pam.d/common-account \
+    /etc/pam.d/common-password \
+    /etc/sudoers.d \
+    /etc/ssh/sshd_config.d \
+    /etc/nftables.conf \
+    /etc/sysctl.d \
+    /etc/apparmor.d/usr.sbin.nginx \
+    /etc/systemd/system/nginx.service.d \
+    /etc/audit/rules.d \
+    /etc/systemd/journald.conf.d \
+    /etc/apt/apt.conf.d/20auto-upgrades 2>/dev/null || true
 
-configure_packages() {
-    log "Installation des paquets necessaires et mises a jour"
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update
-    apt-get install -y \
-        nginx openssh-server sudo curl ca-certificates \
-        libpam-pwquality libpam-modules \
-        nftables apparmor apparmor-utils \
-        auditd audispd-plugins \
-        aide aide-common unattended-upgrades
-    apt-get upgrade -y
-    ok "Paquets installes et mises a jour appliquees"
-}
+echo "=== Installation des paquets ==="
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y \
+    nginx openssh-server sudo curl ca-certificates \
+    libpam-pwquality libpam-modules \
+    nftables apparmor apparmor-utils \
+    auditd audispd-plugins \
+    aide aide-common unattended-upgrades
+apt-get upgrade -y
 
-preserve_business_service() {
-    log "Verification du service metier"
-    systemctl enable --now nginx
-    nginx -t
-    curl -fsS http://127.0.0.1:8080/health | grep -q 'OK' \
-        || die "Le service metier ne repond pas correctement avant le durcissement."
-    ok "Service metier disponible"
-}
+echo "=== A. Service metier ==="
+systemctl enable --now nginx
+nginx -t
+curl -fsS http://127.0.0.1:8080/health | grep -q OK
 
-configure_accounts_and_pam() {
-    log "Comptes, expiration et PAM"
+echo "=== B. Comptes et authentification ==="
 
-    if id stagiaire >/dev/null 2>&1; then
-        pkill -u stagiaire 2>/dev/null || true
-        userdel -r stagiaire
+# Suppression du compte inutile.
+if id stagiaire >/dev/null 2>&1; then
+    pkill -u stagiaire 2>/dev/null || true
+    userdel -r stagiaire
+fi
+
+# Les comptes de service ne doivent pas avoir de shell interactif.
+id deploy >/dev/null 2>&1 && usermod -s /usr/sbin/nologin deploy
+id sauvegarde >/dev/null 2>&1 && usermod -s /usr/sbin/nologin sauvegarde
+
+# Politique d'expiration pour les futurs comptes.
+sed -ri \
+    -e 's/^[#[:space:]]*PASS_MAX_DAYS[[:space:]]+.*/PASS_MAX_DAYS   90/' \
+    -e 's/^[#[:space:]]*PASS_MIN_DAYS[[:space:]]+.*/PASS_MIN_DAYS   1/' \
+    -e 's/^[#[:space:]]*PASS_WARN_AGE[[:space:]]+.*/PASS_WARN_AGE   14/' \
+    /etc/login.defs
+
+# Application aux comptes deja existants.
+for user in moutsss alice bob; do
+    if id "$user" >/dev/null 2>&1; then
+        chage -M 90 -m 1 -W 14 "$user"
     fi
+done
 
-    for account in deploy sauvegarde; do
-        id "$account" >/dev/null 2>&1 && usermod -s /usr/sbin/nologin "$account"
-    done
+# Qualite des mots de passe et verrouillage apres cinq echecs.
+install -o root -g root -m 0644 \
+    "$CONFIG_DIR/security/pwquality.conf" /etc/security/pwquality.conf
+install -o root -g root -m 0644 \
+    "$CONFIG_DIR/security/faillock.conf" /etc/security/faillock.conf
 
-    backup_file /etc/login.defs
-    sed -ri \
-        -e 's/^[#[:space:]]*PASS_MAX_DAYS[[:space:]]+.*/PASS_MAX_DAYS   90/' \
-        -e 's/^[#[:space:]]*PASS_MIN_DAYS[[:space:]]+.*/PASS_MIN_DAYS   1/' \
-        -e 's/^[#[:space:]]*PASS_WARN_AGE[[:space:]]+.*/PASS_WARN_AGE   14/' \
-        /etc/login.defs
+# Ajout de pam_pwquality avant pam_unix.
+if grep -qE '^[[:space:]]*password.*pam_pwquality\.so' /etc/pam.d/common-password; then
+    sed -ri 's|^[[:space:]]*password.*pam_pwquality\.so.*$|password requisite pam_pwquality.so retry=3|' \
+        /etc/pam.d/common-password
+else
+    sed -i '/^[[:space:]]*password.*pam_unix\.so/i password requisite pam_pwquality.so retry=3' \
+        /etc/pam.d/common-password
+fi
 
-    for account in moutsss alice bob; do
-        id "$account" >/dev/null 2>&1 && chage -M 90 -m 1 -W 14 "$account"
-    done
-
-    backup_file /etc/security/pwquality.conf
-    cat > /etc/security/pwquality.conf <<'EOF'
-# Politique de qualite des mots de passe du TP
-minlen = 12
-minclass = 3
-dcredit = -2
-ucredit = -2
-lcredit = -2
-ocredit = -2
-maxrepeat = 3
-EOF
-
-    backup_file /etc/security/faillock.conf
-    cat > /etc/security/faillock.conf <<'EOF'
-deny = 5
-fail_interval = 900
-unlock_time = 900
-audit
-EOF
-
-    backup_file /etc/pam.d/common-password
-    if grep -qE '^[[:space:]]*password.*pam_pwquality\.so' /etc/pam.d/common-password; then
-        sed -ri 's|^[[:space:]]*password.*pam_pwquality\.so.*$|password requisite pam_pwquality.so retry=3|' \
-            /etc/pam.d/common-password
-    else
-        sed -i '/^[[:space:]]*password.*pam_unix\.so/i password requisite pam_pwquality.so retry=3' \
-            /etc/pam.d/common-password
-    fi
-
-    backup_file /etc/pam.d/common-auth
-    awk '
-        /pam_faillock\.so/ { next }
-        !inserted && /pam_unix\.so/ {
-            print "auth required pam_faillock.so preauth"
-            sub(/\[success=[0-9]+/, "[success=2")
-            print
-            print "auth [default=die] pam_faillock.so authfail"
-            inserted=1
-            next
-        }
-        { print }
-        END { if (!inserted) exit 42 }
-    ' /etc/pam.d/common-auth > /etc/pam.d/common-auth.hardening
-    install -o root -g root -m 0644 /etc/pam.d/common-auth.hardening /etc/pam.d/common-auth
-    rm -f /etc/pam.d/common-auth.hardening
-
-    backup_file /etc/pam.d/common-account
-    sed -i '/pam_faillock\.so/d' /etc/pam.d/common-account
-    printf '%s\n' 'account required pam_faillock.so' >> /etc/pam.d/common-account
-
-    for account in moutsss alice bob; do
-        id "$account" >/dev/null 2>&1 && faillock --user "$account" --reset 2>/dev/null || true
-    done
-    ok "Comptes et PAM durcis"
-}
-
-configure_sudo() {
-    log "Durcissement sudo"
-    backup_file /etc/sudoers.d/99-laxiste
-    rm -f /etc/sudoers.d/99-laxiste
-
-    cat > /etc/sudoers.d/logging.tmp <<'EOF'
-Defaults logfile="/var/log/sudo.log"
-Defaults log_input
-Defaults log_output
-EOF
-    chmod 0440 /etc/sudoers.d/logging.tmp
-    visudo -cf /etc/sudoers.d/logging.tmp
-    backup_file /etc/sudoers.d/logging
-    mv /etc/sudoers.d/logging.tmp /etc/sudoers.d/logging
-    visudo -c
-    ok "Regles sudo valides et journalisation active"
-}
-
-configure_ssh() {
-    log "Durcissement SSH"
-    local ssh_dir="/home/${ADMIN_USER}/.ssh"
-    local authorized_keys="${ssh_dir}/authorized_keys"
-
-    # Evite de reproduire une perte d'acces : le mot de passe n'est desactive
-    # que lorsqu'une cle utilisable est deja installee.
-    [ -s "$authorized_keys" ] || die \
-        "Aucune cle dans $authorized_keys. Installer d'abord la cle publique de l'hote."
-    chown -R "$ADMIN_USER:$ADMIN_USER" "$ssh_dir"
-    chmod 0700 "$ssh_dir"
-    chmod 0600 "$authorized_keys"
-
-    backup_file /etc/ssh/sshd_config.d/00-laxiste.conf
-    backup_file /etc/ssh/sshd_config.d/00-durcissement.conf
-    rm -f /etc/ssh/sshd_config.d/00-laxiste.conf
-    cat > /etc/ssh/sshd_config.d/00-durcissement.conf <<EOF
-PermitRootLogin no
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PubkeyAuthentication yes
-AuthenticationMethods publickey
-PermitEmptyPasswords no
-MaxAuthTries 4
-LoginGraceTime 60
-X11Forwarding no
-AllowUsers ${ADMIN_USER} alice bob
-Banner /etc/issue.net
-ClientAliveInterval 600
-AllowTcpForwarding no
-EOF
-
-    printf '%s\n' 'Acces reserve aux utilisateurs autorises.' > /etc/issue.net
-    sshd -t
-    systemctl enable --now ssh
-    systemctl reload ssh
-    ok "SSH durci ; la session courante reste ouverte"
-}
-
-remove_unused_services() {
-    log "Suppression des services et paquets inutiles"
-    for unit in \
-        rpcbind.service rpcbind.socket \
-        avahi-daemon.service avahi-daemon.socket \
-        nfs-server.service xinetd.service; do
-        systemctl disable --now "$unit" >/dev/null 2>&1 || true
-    done
-    apt-get purge -y telnetd xinetd rpcbind nfs-kernel-server avahi-daemon
-    ok "Services inutiles retires"
-}
-
-configure_firewall() {
-    log "Configuration nftables"
-    backup_file /etc/nftables.conf
-    cat > /etc/nftables.conf <<'EOF'
-#!/usr/sbin/nft -f
-
-flush ruleset
-
-table inet filter {
-    chain input {
-        type filter hook input priority filter; policy drop;
-        iifname "lo" accept
-        ct state established,related accept
-        ct state invalid drop
-        ip protocol icmp accept
-        ip6 nexthdr icmpv6 accept
-        tcp dport 22 accept
-        tcp dport 8080 accept
+# Ajout de pam_faillock autour de pam_unix.
+awk '
+    /pam_faillock\.so/ { next }
+    !done && /pam_unix\.so/ {
+        print "auth required pam_faillock.so preauth"
+        sub(/\[success=[0-9]+/, "[success=2")
+        print
+        print "auth [default=die] pam_faillock.so authfail"
+        done=1
+        next
     }
+    { print }
+    END { if (!done) exit 1 }
+' /etc/pam.d/common-auth > /tmp/common-auth.hardening
+install -o root -g root -m 0644 /tmp/common-auth.hardening /etc/pam.d/common-auth
+rm -f /tmp/common-auth.hardening
 
-    chain forward {
-        type filter hook forward priority filter; policy drop;
-    }
+sed -i '/pam_faillock\.so/d' /etc/pam.d/common-account
+printf '%s\n' 'account required pam_faillock.so' >> /etc/pam.d/common-account
 
-    chain output {
-        type filter hook output priority filter; policy accept;
-    }
-}
-EOF
-    nft -c -f /etc/nftables.conf
-    nft -f /etc/nftables.conf
-    systemctl enable --now nftables
-    ok "Pare-feu actif et persistant"
-}
+for user in moutsss alice bob; do
+    id "$user" >/dev/null 2>&1 && faillock --user "$user" --reset 2>/dev/null || true
+done
 
-configure_permissions() {
-    log "Permissions et binaire SUID"
-    chown root:shadow /etc/shadow
-    chmod 0640 /etc/shadow
+echo "=== C. Sudo ==="
+rm -f /etc/sudoers.d/99-laxiste
+visudo -cf "$CONFIG_DIR/sudoers.d/logging"
+install -o root -g root -m 0440 \
+    "$CONFIG_DIR/sudoers.d/logging" /etc/sudoers.d/logging
+visudo -c
 
-    if [ -d /srv/metier ]; then
-        chown -R root:root /srv/metier
-        find /srv/metier -type d -exec chmod 0755 {} +
-        find /srv/metier -type f -exec chmod 0644 {} +
-    fi
+echo "=== D. SSH ==="
 
-    if [ -d /opt/scripts ]; then
-        chown -R root:root /opt/scripts
-        find /opt/scripts -type d -exec chmod 0755 {} +
-        find /opt/scripts -type f -exec chmod 0750 {} +
-    fi
+# Ne pas desactiver le mot de passe avant d'avoir installe une cle publique.
+SSH_DIR="/home/$ADMIN_USER/.ssh"
+AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+if [ ! -s "$AUTHORIZED_KEYS" ]; then
+    echo "[ERREUR] Aucune cle publique dans $AUTHORIZED_KEYS."
+    echo "Installez la cle de l'hote avant de relancer le script."
+    exit 1
+fi
 
-    backup_file /usr/local/bin/find-suid
-    rm -f /usr/local/bin/find-suid
-    find /etc -xdev -type f -perm -0002 -exec chmod o-w {} +
-    ok "Permissions corrigees et SUID superflu retire"
-}
+chown -R "$ADMIN_USER:$(id -gn "$ADMIN_USER")" "$SSH_DIR"
+chmod 0700 "$SSH_DIR"
+chmod 0600 "$AUTHORIZED_KEYS"
 
-configure_kernel() {
-    log "Durcissement du noyau"
-    backup_file /etc/sysctl.d/99-laxiste.conf
-    backup_file /etc/sysctl.d/99-z-durcissement.conf
-    rm -f /etc/sysctl.d/99-laxiste.conf
-    cat > /etc/sysctl.d/99-z-durcissement.conf <<'EOF'
-kernel.randomize_va_space = 2
-kernel.dmesg_restrict = 1
-kernel.kptr_restrict = 2
-fs.suid_dumpable = 0
-net.ipv4.ip_forward = 0
-net.ipv4.tcp_syncookies = 1
-net.ipv4.conf.all.accept_redirects = 0
-net.ipv4.conf.default.accept_redirects = 0
-net.ipv4.conf.all.accept_source_route = 0
-net.ipv4.conf.default.accept_source_route = 0
-EOF
-    sysctl --system >/dev/null
-    ok "Reglages noyau appliques et persistants"
-}
+rm -f /etc/ssh/sshd_config.d/00-laxiste.conf
+sed "s/^AllowUsers .*/AllowUsers $ADMIN_USER alice bob/" \
+    "$CONFIG_DIR/ssh/sshd_config.d/00-durcissement.conf" \
+    > /tmp/00-durcissement.conf
+install -o root -g root -m 0644 \
+    /tmp/00-durcissement.conf /etc/ssh/sshd_config.d/00-durcissement.conf
+rm -f /tmp/00-durcissement.conf
+install -o root -g root -m 0644 "$CONFIG_DIR/issue.net" /etc/issue.net
 
-configure_apparmor_and_systemd() {
-    log "Confinement AppArmor et systemd de nginx"
-    systemctl enable --now apparmor
-    systemctl restart apparmor
+sshd -t
+systemctl enable --now ssh
+systemctl reload ssh
 
-    backup_file /etc/apparmor.d/usr.sbin.nginx
-    cat > /etc/apparmor.d/usr.sbin.nginx <<'EOF'
-abi <abi/3.0>,
+echo "=== E. Services et paquets inutiles ==="
+for service in \
+    rpcbind.service rpcbind.socket \
+    avahi-daemon.service avahi-daemon.socket \
+    nfs-server.service xinetd.service; do
+    systemctl disable --now "$service" >/dev/null 2>&1 || true
+done
+apt-get purge -y telnetd xinetd rpcbind nfs-kernel-server avahi-daemon
 
-include <tunables/global>
+echo "=== F. Pare-feu nftables ==="
+nft -c -f "$CONFIG_DIR/nftables.conf"
+install -o root -g root -m 0755 "$CONFIG_DIR/nftables.conf" /etc/nftables.conf
+nft -f /etc/nftables.conf
+systemctl enable --now nftables
 
-/usr/sbin/nginx flags=(attach_disconnected) {
-  include <abstractions/base>
-  include <abstractions/nameservice>
-  include <abstractions/ssl_certs>
+echo "=== G. Permissions et SUID ==="
+chown root:shadow /etc/shadow
+chmod 0640 /etc/shadow
 
-  capability chown,
-  capability dac_override,
-  capability setgid,
-  capability setuid,
+if [ -d /srv/metier ]; then
+    chown -R root:root /srv/metier
+    find /srv/metier -type d -exec chmod 0755 {} +
+    find /srv/metier -type f -exec chmod 0644 {} +
+fi
 
-  network inet stream,
-  network inet6 stream,
+if [ -d /opt/scripts ]; then
+    chown -R root:root /opt/scripts
+    find /opt/scripts -type d -exec chmod 0755 {} +
+    find /opt/scripts -type f -exec chmod 0750 {} +
+fi
 
-  /usr/sbin/nginx mr,
-  /usr/lib/nginx/modules/*.so mr,
-  /etc/nginx/ r,
-  /etc/nginx/** r,
-  /etc/ssl/openssl.cnf r,
-  /run/nginx.pid rw,
-  /var/log/nginx/ r,
-  /var/log/nginx/*.log rw,
-  /srv/metier/ r,
-  /srv/metier/** r,
-}
-EOF
-    apparmor_parser -r /etc/apparmor.d/usr.sbin.nginx
-    aa-enforce /usr/sbin/nginx
+rm -f /usr/local/bin/find-suid
+find /etc -xdev -type f -perm -0002 -exec chmod o-w {} +
 
-    # Les profils LibreOffice fournis par Debian/Xfce peuvent etre livres en
-    # complain. Le bareme demande qu'aucun profil ne reste dans ce mode.
-    for profile in \
-        /etc/apparmor.d/usr.lib.libreoffice.program.soffice.bin \
-        /etc/apparmor.d/usr.lib.libreoffice.program.oosplash; do
-        [ -f "$profile" ] && aa-enforce "$profile"
-    done
+echo "=== H. Reglages noyau ==="
+rm -f /etc/sysctl.d/99-laxiste.conf
+install -o root -g root -m 0644 \
+    "$CONFIG_DIR/sysctl.d/99-z-durcissement.conf" \
+    /etc/sysctl.d/99-z-durcissement.conf
+sysctl --system >/dev/null
 
-    install -d -o root -g root -m 0755 /etc/systemd/system/nginx.service.d
-    cat > /etc/systemd/system/nginx.service.d/hardening.conf <<'EOF'
-[Service]
-NoNewPrivileges=yes
-EOF
-    systemctl daemon-reload
-    nginx -t
-    systemctl restart nginx
-    curl -fsS http://127.0.0.1:8080/health | grep -q 'OK'
-    ok "nginx fonctionne sous AppArmor enforce avec NoNewPrivileges"
-}
+echo "=== I. AppArmor et confinement systemd ==="
+systemctl enable --now apparmor
+systemctl restart apparmor
 
-configure_audit_and_journal() {
-    log "Journalisation persistante et auditd"
-    cat > /etc/audit/rules.d/50-hardening.rules <<'EOF'
--w /etc/passwd -p wa -k identity
--w /etc/shadow -p wa -k identity
--w /etc/group -p wa -k identity
--w /etc/gshadow -p wa -k identity
--w /etc/sudoers -p wa -k privilege
--w /etc/sudoers.d/ -p wa -k privilege
--w /etc/ssh/sshd_config -p wa -k ssh
--w /etc/ssh/sshd_config.d/ -p wa -k ssh
-EOF
-    systemctl enable --now auditd
-    augenrules --load
+apparmor_parser -Q "$CONFIG_DIR/apparmor.d/usr.sbin.nginx"
+install -o root -g root -m 0600 \
+    "$CONFIG_DIR/apparmor.d/usr.sbin.nginx" /etc/apparmor.d/usr.sbin.nginx
+apparmor_parser -r /etc/apparmor.d/usr.sbin.nginx
+aa-enforce /usr/sbin/nginx
 
-    backup_file /etc/systemd/journald.conf.d/99-laxiste.conf
-    backup_file /etc/systemd/journald.conf.d/99-persistent.conf
-    rm -f /etc/systemd/journald.conf.d/99-laxiste.conf
-    install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
-    cat > /etc/systemd/journald.conf.d/99-persistent.conf <<'EOF'
-[Journal]
-Storage=persistent
-SystemMaxUse=200M
-EOF
-    systemd-tmpfiles --create --prefix /var/log/journal
-    systemctl restart systemd-journald
-    journalctl --flush
-    ok "auditd et journal persistant configures"
-}
+# Le bareme demande qu'aucun profil ne reste en mode complain.
+for profile in \
+    /etc/apparmor.d/usr.lib.libreoffice.program.soffice.bin \
+    /etc/apparmor.d/usr.lib.libreoffice.program.oosplash; do
+    [ -f "$profile" ] && aa-enforce "$profile"
+done
 
-configure_aide() {
-    log "Controle d'integrite AIDE"
-    if [ -s /var/lib/aide/aide.db ]; then
-        ok "Base AIDE deja initialisee ; conservation de la base existante"
-    else
-        warn "Initialisation AIDE en cours : cette operation peut durer plus de 15 minutes."
-        /usr/sbin/aideinit --yes --force
-        [ -s /var/lib/aide/aide.db ] || die "La base AIDE n'a pas ete creee."
-        ok "Base AIDE initialisee"
-    fi
-}
+install -d -o root -g root -m 0755 /etc/systemd/system/nginx.service.d
+install -o root -g root -m 0644 \
+    "$CONFIG_DIR/systemd/system/nginx.service.d/hardening.conf" \
+    /etc/systemd/system/nginx.service.d/hardening.conf
+systemctl daemon-reload
+nginx -t
+systemctl restart nginx
+curl -fsS http://127.0.0.1:8080/health | grep -q OK
 
-configure_automatic_updates() {
-    log "Mises a jour automatiques"
-    cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::"Unattended-Upgrade" "1";
-APT::Periodic::AutocleanInterval "7";
-EOF
-    systemctl enable --now unattended-upgrades.service
-    systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
-    apt-config dump | grep -qE '^APT::Periodic::Unattended-Upgrade[[:space:]]+"1";'
-    systemctl is-active --quiet apt-daily-upgrade.timer
-    ok "Mises a jour automatiques configurees et actives"
-}
+echo "=== J. Journalisation et integrite ==="
+install -o root -g root -m 0640 \
+    "$CONFIG_DIR/audit/rules.d/50-hardening.rules" \
+    /etc/audit/rules.d/50-hardening.rules
+systemctl enable --now auditd
+augenrules --load
 
-final_checks() {
-    log "Verification finale"
-    nginx -t
-    systemctl is-enabled --quiet nginx
-    systemctl is-active --quiet nginx
-    curl -fsS http://127.0.0.1:8080/health | grep -q 'OK'
-    sshd -t
-    nft -c -f /etc/nftables.conf
-    visudo -c
+rm -f /etc/systemd/journald.conf.d/99-laxiste.conf
+install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
+install -o root -g root -m 0644 \
+    "$CONFIG_DIR/systemd/journald.conf.d/99-persistent.conf" \
+    /etc/systemd/journald.conf.d/99-persistent.conf
+systemd-tmpfiles --create --prefix /var/log/journal
+systemctl restart systemd-journald
+journalctl --flush
 
-    local checker="${HARDENING_CHECKER:-${SCRIPT_DIR}/kit-vm/check-debian.sh}"
-    if [ ! -f "$checker" ] && [ -f "${SCRIPT_DIR}/check-debian.sh" ]; then
-        checker="${SCRIPT_DIR}/check-debian.sh"
-    fi
+# L'initialisation AIDE peut durer plus de quinze minutes.
+if [ ! -s /var/lib/aide/aide.db ]; then
+    /usr/sbin/aideinit --yes --force
+fi
 
-    if [ -f "$checker" ]; then
-        chmod +x "$checker"
-        "$checker"
-    else
-        warn "check-debian.sh introuvable ; controles techniques de base termines."
-    fi
+echo "=== K. Mises a jour automatiques ==="
+install -o root -g root -m 0644 \
+    "$CONFIG_DIR/apt/apt.conf.d/20auto-upgrades" \
+    /etc/apt/apt.conf.d/20auto-upgrades
+systemctl enable --now unattended-upgrades.service
+systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
 
-    printf '\nSauvegardes : %s\n' "$BACKUP_DIR"
-    printf 'Redemarrer ensuite la VM et relancer check-debian.sh pour valider la persistance.\n'
-}
+echo "=== Verification finale ==="
+nginx -t
+sshd -t
+visudo -c
+nft -c -f /etc/nftables.conf
+curl -fsS http://127.0.0.1:8080/health | grep -q OK
 
-main() {
-    require_root_and_debian
-    configure_packages
-    preserve_business_service
-    configure_accounts_and_pam
-    configure_sudo
-    configure_ssh
-    remove_unused_services
-    configure_firewall
-    configure_permissions
-    configure_kernel
-    configure_apparmor_and_systemd
-    configure_audit_and_journal
-    configure_aide
-    configure_automatic_updates
-    final_checks
-}
+CHECKER="$SCRIPT_DIR/kit-vm/check-debian.sh"
+if [ ! -f "$CHECKER" ]; then
+    CHECKER="$SCRIPT_DIR/check-debian.sh"
+fi
 
-main "$@"
+if [ -f "$CHECKER" ]; then
+    bash "$CHECKER"
+else
+    echo "[ATTENTION] check-debian.sh est introuvable."
+fi
+
+echo
+echo "Sauvegarde : $BACKUP_DIR/configurations-avant.tar.gz"
+echo "Redemarrez ensuite la VM et relancez check-debian.sh."

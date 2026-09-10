@@ -4,19 +4,61 @@ Dans ce rapport, je présente l’audit et le durcissement que j’ai réalisés
 
 ## Sommaire
 
-1. [Service métier et audit](#a-service-métier-et-audit)
-2. [Comptes et authentification](#b-comptes-et-authentification)
-3. [Élévation de privilèges](#c-élévation-de-privilèges)
-4. [Accès distant SSH](#d-accès-distant-ssh)
-5. [Services et paquets](#e-services-et-paquets)
-6. [Réseau et pare-feu](#f-réseau-et-pare-feu)
-7. [Systèmes de fichiers et SUID](#g-systèmes-de-fichiers-et-suid)
-8. [Noyau](#h-noyau)
-9. [Confinement des processus](#i-confinement-des-processus)
-10. [Journalisation et intégrité](#j-journalisation-et-intégrité)
-11. [Mises à jour](#k-mises-à-jour)
-12. [Vérification finale](#vérification-finale)
-13. [Corrections issues de la relecture](#corrections-issues-de-la-relecture)
+1. [Mise en place de la VM](#mise-en-place-de-la-vm)
+2. [Service métier et audit](#a-service-métier-et-audit)
+3. [Comptes et authentification](#b-comptes-et-authentification)
+4. [Élévation de privilèges](#c-élévation-de-privilèges)
+5. [Accès distant SSH](#d-accès-distant-ssh)
+6. [Services et paquets](#e-services-et-paquets)
+7. [Réseau et pare-feu](#f-réseau-et-pare-feu)
+8. [Systèmes de fichiers et SUID](#g-systèmes-de-fichiers-et-suid)
+9. [Noyau](#h-noyau)
+10. [Confinement des processus](#i-confinement-des-processus)
+11. [Journalisation et intégrité](#j-journalisation-et-intégrité)
+12. [Mises à jour](#k-mises-à-jour)
+13. [Vérification finale](#vérification-finale)
+14. [Corrections issues de la relecture](#corrections-issues-de-la-relecture)
+
+## Mise en place de la VM
+
+### Presse-papiers partagé
+
+Pour simplifier le transfert de fichiers et de commandes entre l’hôte et la VM, j’ai activé le presse-papiers bidirectionnel dans VirtualBox. Cela permet de copier-coller du texte entre les deux environnements.
+
+J’ai installé les VirtualBox Guest Additions dans la VM, puis activé Périphériques-> Presse-papiers partagé-> Bidirectionnel :
+
+Puis j'ai installé les paquets nécessaires à la compilation et aux modules du noyau, j'ai monté l'image CD des Guest Additions (les Guest Addition c'est des outils pour améliorer l'expérience utilisateur dans VirtualBox), puis j’ai exécuté le script d’installation des Guest Additions et redémarré la VM :
+```bash
+sudo apt install -y build-essential dkms linux-headers-$(uname -r)
+# Après insertion de l’image CD des Guest Additions depuis VirtualBox :
+sudo mount /dev/sr0 /mnt
+sudo sh /mnt/VBoxLinuxAdditions.run
+sudo reboot
+```
+
+### Accès SSH depuis l’hôte
+
+Le mode NAT ne permettait pas à l’hôte de joindre directement `10.0.2.15`. J’ai ajouté une redirection VirtualBox hôte `127.0.0.1:2222`-> VM `10.0.2.15:22`, puis activé SSH :
+
+```bash
+sudo systemctl enable --now ssh
+```
+
+Je peux ensuite me connecter depuis l’hôte avec :
+
+```bash
+ssh -p 2222 moutsss@127.0.0.1
+```
+
+Après ça on peut suivre le TP et commencer par installer openssh-server si ce n’est pas déjà fait ou lancer le script prepare-debian.sh
+
+Executer le script de dégradation :
+```bash
+sudo ./kit-vm/degrade.sh
+```
+
+On prend un instantané de la VM pour pouvoir revenir à l’état initial si nécessaire.
+
 
 ## A. Service métier et audit
 
@@ -28,14 +70,6 @@ curl -fsS http://127.0.0.1:8080/health
 
 ```text
 OK
-```
-
-L’état courant et l’activation au démarrage de nginx sont deux propriétés distinctes :
-
-```bash
-systemctl is-active nginx
-systemctl is-enabled nginx
-sudo systemctl status nginx --no-pager
 ```
 
 J’ai ensuite réalisé et enregistré un audit Lynis avec :
@@ -101,7 +135,7 @@ PASS_MIN_DAYS   1
 PASS_WARN_AGE   14
 ```
 
-`PASS_MIN_DAYS` impose un délai d’un jour avant un nouveau changement. `/etc/login.defs` n’agit que sur les comptes créés par la suite ; j’ai donc appliqué la politique aux comptes existants avec `chage` :
+`PASS_MIN_DAYS` impose un délai d’un jour avant un nouveau changement. `/etc/login.defs` n’agit que sur les comptes créés par la suite. J’ai alors appliqué la politique aux comptes existants avec `chage` :
 
 ```bash
 sudo chage -M 90 -m 1 -W 14 alice
@@ -137,7 +171,7 @@ ocredit = -2
 maxrepeat = 3
 ```
 
-J’utilise des crédits négatifs, car `libpwquality` interprète leur valeur absolue comme un nombre minimal obligatoire. Cette configuration impose donc au moins deux chiffres, deux majuscules, deux minuscules et deux autres caractères, avec une longueur minimale de douze caractères et au moins trois classes. Cette politique est volontairement stricte pour le TP.
+Cette configuration impose donc au moins deux chiffres, deux majuscules, deux minuscules et deux caractères spéciaux, avec une longueur minimale de douze caractères et au plus trois répétitions consécutives. (La politique est un peu stricte j'ai eu quelques problemes qui m'ont forcés a changer le mot de passe depuis un shell root lors de l'init de la machine)
 
 ### Verrouillage après échecs
 
@@ -164,18 +198,6 @@ account required pam_faillock.so
 
 L’ordre des lignes PAM est important. `success=2` permet à une authentification Unix réussie de sauter à la fois `pam_faillock ... authfail` et `pam_deny`. J’ai conservé une session locale ouverte pendant les essais afin d’éviter une perte d’accès en cas d’erreur.
 
-### Résultat
-
-```text
-[PASS] Aucun compte (hors root) avec UID 0
-[PASS] Aucun compte sans mot de passe
-[PASS] Comptes de service sans shell interactif (deploy, sauvegarde)
-[PASS] Compte stagiaire supprimé ou verrouillé
-[PASS] Politique d’expiration des mots de passe
-[PASS] Expiration appliquée aux comptes existants
-[PASS] Module de robustesse présent
-[PASS] Verrouillage après échecs répétés
-```
 
 ## C. Élévation de privilèges
 
@@ -195,19 +217,12 @@ Defaults log_output
 
 `logfile` journalise les événements sudo. `log_input` et `log_output` activent en plus les journaux d’entrées-sorties des sessions sudo.
 
-J’ai contrôlé les droits et la syntaxe avant de fermer la session administrateur :
+J’ai contrôlé les droits et la syntaxe avant de fermer la session administrateur avec visudo qui permet de vérifier la syntaxe des fichiers sudoers :
 
 ```bash
 sudo chmod 0440 /etc/sudoers.d/logging
 sudo visudo -cf /etc/sudoers.d/logging
 sudo visudo -c
-```
-
-```text
-[PASS] Plus aucune règle NOPASSWD: ALL
-[PASS] Fichier /etc/sudoers.d/99-laxiste supprimé
-[PASS] Syntaxe sudoers valide
-[PASS] Journalisation des commandes sudo activée
 ```
 
 ## D. Accès distant SSH
@@ -227,9 +242,9 @@ ClientAliveInterval 600
 AllowTcpForwarding no
 ```
 
-Ces options interdisent la connexion directe de `root`, désactivent l’authentification par mot de passe, imposent les clés publiques, limitent les essais et les comptes autorisés, et désactivent les transferts X11 et TCP. `ClientAliveInterval 600` permet également au serveur de vérifier périodiquement que le client répond toujours.
+Ces options interdisent la connexion directe sur le compte `root`, désactivent l’authentification par mot de passe, imposent les clés publiques, limitent les essais et les comptes autorisés, et désactivent les transferts X11 et TCP. `ClientAliveInterval 600` permet également au serveur de vérifier périodiquement que le client répond toujours.
 
-Avant de désactiver le mot de passe, j’ai placé la clé publique de l’hôte dans `~moutsss/.ssh/authorized_keys` :
+Avant de désactiver le mot de passe, j’ai créé une clé ssh sur l'hote et placé la clé publique dans `~moutsss/.ssh/authorized_keys` comme ça je ne perd pas l'accès à la VM. J’ai ensuite sécurisé les permissions du répertoire et du fichier :
 
 ```bash
 chmod 700 ~/.ssh
@@ -241,7 +256,6 @@ J’ai validé la configuration avant de la recharger :
 ```bash
 sudo sshd -t
 sudo systemctl reload ssh
-sudo sshd -T | grep -E '^(permitrootlogin|passwordauthentication|pubkeyauthentication|maxauthtries|logingracetime|x11forwarding|allowusers|banner) '
 ```
 
 Depuis l’hôte, la redirection NAT VirtualBox utilise :
@@ -256,20 +270,17 @@ La bannière `/etc/issue.net` contient :
 Accès réservé aux utilisateurs autorisés.
 ```
 
-```text
-[PASS] PermitRootLogin désactivé
-[PASS] Authentification par mot de passe désactivée
-[PASS] MaxAuthTries <= 4
-[PASS] LoginGraceTime <= 60
-[PASS] X11Forwarding désactivé
-[PASS] PermitEmptyPasswords désactivé
-[PASS] Restriction d’accès
-[PASS] Bannière sans divulgation d’information
-```
-
 J’ai vérifié ces deux options avec `sshd -T` : il retourne désormais `clientaliveinterval 600` et `allowtcpforwarding no`.
 
 ## E. Services et paquets
+
+J’ai inventorié les sockets TCP avec :
+
+```bash
+sudo ss -ltnp
+```
+
+ Il ne faut qu’aucun port autre que 22 et 8080 ne doit écouter sur toutes les interfaces IPv4 (`0.0.0.0`).
 
 J’ai arrêté et désactivé les services inutiles lorsqu’ils existaient :
 
@@ -279,23 +290,6 @@ sudo systemctl disable --now avahi-daemon.service avahi-daemon.socket
 sudo systemctl disable --now nfs-server.service
 sudo systemctl disable --now xinetd.service
 sudo apt remove -y xinetd telnetd
-```
-
-J’ai inventorié les sockets TCP avec :
-
-```bash
-sudo ss -ltnp
-```
-
-Le critère signifie qu’aucun port **autre que 22 et 8080** ne doit écouter sur toutes les interfaces IPv4 (`0.0.0.0`). Une écoute sur `127.0.0.1` ou `::1` est limitée à la machine locale.
-
-```text
-[PASS] telnetd absent
-[PASS] rpcbind arrêté/désactivé
-[PASS] avahi-daemon arrêté/désactivé
-[PASS] nfs-kernel-server absent ou inactif
-[PASS] xinetd absent
-[PASS] Aucun port en écoute hors 22/8080 sur 0.0.0.0
 ```
 
 ## F. Réseau et pare-feu
@@ -337,7 +331,7 @@ table inet filter {
 }
 ```
 
-La politique est restrictive en entrée et en transit ; les sorties restent autorisées. Le loopback, les flux établis, ICMP/ICMPv6, SSH et le service métier sont explicitement autorisés.
+La politique est restrictive en entrée et en forward, les sorties restent autorisées. Le loopback, les flux établis, ICMP/ICMPv6, SSH et le service métier sont explicitement autorisés.
 
 ```bash
 sudo nft -c -f /etc/nftables.conf
@@ -346,13 +340,7 @@ sudo systemctl enable --now nftables
 sudo nft list ruleset
 ```
 
-```text
-[PASS] Un pare-feu est actif
-[PASS] Politique par défaut restrictive en entrée
-[PASS] Le pare-feu survit au redémarrage
-```
-
-J’ai rechargé le fichier puis vérifié avec `sudo nft list ruleset` que les politiques **effectivement chargées** des chaînes `input` et `forward` étaient toutes les deux à `drop`. La chaîne `output` reste à `accept` pour permettre les communications sortantes.
+J’ai rechargé le fichier puis vérifié avec `sudo nft list ruleset` que les politiques effectivement chargées des chaînes `input` et `forward` étaient toutes les deux à `drop`. La chaîne `output` reste à `accept` pour permettre les communications sortantes.
 
 ## G. Systèmes de fichiers et SUID
 
@@ -371,17 +359,17 @@ sudo chown root:shadow /etc/shadow
 sudo chmod 640 /etc/shadow
 
 sudo chown -R root:root /srv/metier
-sudo find /srv/metier -type d -exec chmod 755 {} +
-sudo find /srv/metier -type f -exec chmod 644 {} +
+sudo find /srv/metier -type d -exec chmod 755 {} + # fait une boucle sur le répertoire et change les droits de tous les sous-répertoires
+sudo find /srv/metier -type f -exec chmod 644 {} +  #similaire
 
 sudo chown -R root:root /opt/scripts
-sudo find /opt/scripts -type d -exec chmod 755 {} +
-sudo find /opt/scripts -type f -exec chmod 750 {} +
+sudo find /opt/scripts -type d -exec chmod 755 {} + # similaire
+sudo find /opt/scripts -type f -exec chmod 750 {} + #similaire
 ```
 
 Le groupe système `shadow` existe par défaut sur Debian. Il permet à certains programmes privilégiés de lire `/etc/shadow` sans ouvrir ce fichier aux autres utilisateurs. Avec le mode `0640`, `root` peut lire et modifier le fichier, le groupe `shadow` peut le lire et les autres n’ont aucun droit.
 
-Le binaire SUID superflu a d’abord été mis en quarantaine :
+J'ai d'abord mis en quarantaine le binaire SUID superflu pour voir si le service métier continuait de fonctionner. J’ai créé un répertoire `/root/prison`, déplacé le binaire SUID et restreint ses permissions :
 
 ```bash
 sudo mkdir -p /root/prison
@@ -396,34 +384,37 @@ Le service fonctionnant toujours, j’ai ensuite retiré le fichier :
 sudo rm /root/prison/find-suid.disabled
 ```
 
-```text
-[PASS] Permissions de /etc/shadow corrigées
-[PASS] /srv/metier n’est plus en 777
-[PASS] /opt/scripts n’est plus en 777
-[PASS] Binaire SUID superflu retiré
-[PASS] Aucun fichier world-writable dans /etc
-```
-
 ## H. Noyau
 
 Le fichier persistant `/etc/sysctl.d/99-z-durcissement.conf` contient :
 
 ```ini
-kernel.randomize_va_space = 2
-kernel.dmesg_restrict = 1
-kernel.kptr_restrict = 2
-fs.suid_dumpable = 0
-net.ipv4.ip_forward = 0
-net.ipv4.tcp_syncookies = 1
-net.ipv4.conf.all.accept_redirects = 0
-net.ipv4.conf.default.accept_redirects = 0
-net.ipv4.conf.all.accept_source_route = 0
-net.ipv4.conf.default.accept_source_route = 0
+kernel.randomize_va_space = 2   
+# active l’ASLR (Address Space Layout Randomization)
+kernel.dmesg_restrict = 1       
+# restreint l’accès à dmesg aux utilisateurs privilégiés
+kernel.kptr_restrict = 2        
+# restreint l’accès aux pointeurs du noyau dans /proc/kallsyms et /proc/modules
+fs.suid_dumpable = 0            
+# désactive les dumps de processus SUID
+net.ipv4.ip_forward = 0         
+# désactive le routage IPv4
+net.ipv4.tcp_syncookies = 1     
+# active les SYN cookies pour se protéger contre les attaques par déni de service
+net.ipv4.conf.all.accept_redirects = 0  
+# désactive les redirections ICMP
+net.ipv4.conf.default.accept_redirects = 0  
+# désactive les redirections ICMP par défaut
+net.ipv4.conf.all.accept_source_route = 0   
+# désactive le routage imposé par la source
+net.ipv4.conf.default.accept_source_route = 0   
+# désactive le routage imposé par la source par défaut
 ```
 
 Ces réglages activent l’ASLR, limitent l’exposition d’informations du noyau, désactivent les dumps privilégiés et le routage, activent les SYN cookies, puis refusent les redirections ICMP et le routage imposé par la source.
 
 ```bash
+#ici on recharge la configuration du noyau pour qu'elle soit appliquée immédiatement
 sudo sysctl --system
 sysctl kernel.randomize_va_space kernel.dmesg_restrict kernel.kptr_restrict
 sysctl fs.suid_dumpable net.ipv4.ip_forward net.ipv4.tcp_syncookies
@@ -472,7 +463,7 @@ curl -fsS http://127.0.0.1:8080/health
 sudo aa-status
 ```
 
-Le redémarrage sous le profil restrictif est indispensable : un processus déjà lancé peut continuer à fonctionner alors qu’un profil incomplet empêchera son prochain démarrage.
+Le redémarrage sous le profil restrictif est indispensable car le service peut continuer a fonctionner alors qu'il ne fonctionnera plus a uprochain redémarrage
 
 J’ai ajouté le confinement systemd dans `/etc/systemd/system/nginx.service.d/hardening.conf` :
 
@@ -489,7 +480,7 @@ systemctl show nginx -p NoNewPrivileges
 
 `NoNewPrivileges=yes` empêche nginx et ses descendants d’acquérir de nouveaux privilèges lors d’un `execve`.
 
-Les quatre contrôles AppArmor/systemd passent.
+`execve` est l’appel système utilisé par `system()` et `popen()` qui permet de lancer un nouveau processus. Il est donc important de restreindre les privilèges pour éviter qu’un processus compromis ne puisse élever ses droits.
 
 ## J. Journalisation et intégrité
 
@@ -518,10 +509,13 @@ J’ai créé `/etc/audit/rules.d/50-hardening.rules` afin de surveiller les fic
 `w` surveille les écritures, `a` les changements d’attributs et les clés facilitent les recherches avec `ausearch`.
 
 ```bash
+# on recharge les règles et on vérifie qu’elles sont bien prises en compte
 sudo augenrules --load
 sudo auditctl -l
 sudo ausearch -k identity
 ```
+
+Ces logs d'audit peuvent être consultés avec `ausearch` ou `journalctl -k`.
 
 ### Journal persistant
 
@@ -532,8 +526,7 @@ J’ai créé `/etc/systemd/journald.conf.d/99-persistent.conf` avec le contenu 
 Storage=persistent
 SystemMaxUse=200M
 ```
-
-Les commentaires doivent être placés sur des lignes séparées dans un fichier systemd afin de ne pas être interprétés comme une partie de la valeur.
+Je créée ensuite le journal, redémarre le service, flush pour transferer les données en RAM vers le nouveau espace disque et on vérifie l’espace disque utilisé par le journal :
 
 ```bash
 sudo systemd-tmpfiles --create --prefix /var/log/journal
@@ -547,11 +540,13 @@ journalctl --disk-usage
 AIDE vérifie l’intégrité des fichiers en les comparant avec une base de référence :
 
 ```bash
+# on initialise la base de référence AIDE
 sudo apt install -y aide aide-common
 sudo /usr/sbin/aideinit --yes --force
 ```
 
-Sur ma VM, l’initialisation a duré 13 minutes et 29 secondes. J’ai constaté que l’absence de sortie pendant le calcul était normale : le processus lisait le disque et n’a écrit la base qu’à la fin. Le wrapper Debian `aideinit` a automatiquement créé la base active ; je n’ai donc effectué aucune copie manuelle supplémentaire.
+Sur ma VM, l’initialisation a duré 13 minutes. J’ai constaté que l’absence de sortie pendant le calcul était normale : le processus lisait le disque et n’a écrit la base qu’à la fin. 
+Le wrapper Debian `aideinit` a automatiquement créé la base active ; je n’ai donc effectué aucune copie manuelle supplémentaire.
 
 ```bash
 sudo ls -lh /var/lib/aide/aide.db*
@@ -593,7 +588,8 @@ systemctl is-active apt-daily-upgrade.timer
 systemctl list-timers apt-daily.timer apt-daily-upgrade.timer --all
 ```
 
-Après le redémarrage, j’ai constaté que le service et les deux minuteurs étaient actifs. La version fournie de `check-debian.sh` cherche un guillemet immédiatement après `Unattended-Upgrade`. J’utilise donc la syntaxe APT valide avec le dernier composant de la clé entre guillemets :
+Après le redémarrage, j’ai constaté que le service et les deux minuteurs étaient actifs. La version fournie de `check-debian.sh` cherche un guillemet immédiatement après `Unattended-Upgrade`.  
+ Je valide avec le dernier composant de la clé entre guillemets
 
 ```bash
 APT::Periodic::"Unattended-Upgrade" "1";
@@ -670,14 +666,4 @@ Score technique   : 60 / 60
 
 Les 58 contrôles passent. Le service métier reste disponible et les configurations persistent après redémarrage.
 
-## Corrections issues de la relecture
-
-Lors de ma relecture du rapport et de la configuration effective, j’ai identifié puis corrigé les éléments suivants :
-
-1. J’ai remplacé les crédits positifs de `pwquality` par `-2` afin d’imposer réellement deux caractères de chaque classe.
-2. J’ai ajouté `ClientAliveInterval 600` et `AllowTcpForwarding no` dans la configuration SSH et vérifié leurs valeurs effectives avec `sshd -T`.
-3. J’ai ajouté explicitement `policy drop` à la chaîne nftables `forward`, puis vérifié le jeu de règles chargé.
-4. J’ai remplacé la commande AIDE générique par `sudo aide --config=/etc/aide/aide.conf --check` et adapté son explication.
-5. J’ai utilisé une clé APT entre guillemets, syntaxe valide pour APT, afin que la configuration soit correctement interprétée et reconnue par le contrôle fourni.
-
-Ces corrections sont également intégrées à `hardening.sh` et aux fichiers reproductibles du dossier `configs/`.
+Je refais un audit lynis pour voir les différences après le hardening et on peut voir une nette amélioration.
