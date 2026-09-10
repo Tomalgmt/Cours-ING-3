@@ -27,6 +27,8 @@ Pour simplifier le transfert de fichiers et de commandes entre l’hôte et la V
 
 J’ai installé les VirtualBox Guest Additions dans la VM, puis activé Périphériques-> Presse-papiers partagé-> Bidirectionnel :
 
+J’effectue ce réglage avant de lancer `hardening.sh`, car le script peut me demander de coller la clé publique SSH de l’hôte pendant son exécution.
+
 Puis j'ai installé les paquets nécessaires à la compilation et aux modules du noyau, j'ai monté l'image CD des Guest Additions (les Guest Addition c'est des outils pour améliorer l'expérience utilisateur dans VirtualBox), puis j’ai exécuté le script d’installation des Guest Additions et redémarré la VM :
 ```bash
 sudo apt install -y build-essential dkms linux-headers-$(uname -r)
@@ -629,7 +631,7 @@ chmod +x hardening.sh
 sudo ./hardening.sh
 ```
 
-Il synchronise d’abord l’horloge par NTP afin que les dépôts APT soient utilisables. Il sauvegarde ensuite les fichiers remplacés sous `/root/hardening-backups/`, refuse de désactiver le mot de passe SSH si aucune clé publique n’est installée pour le compte administrateur, vérifie nginx après les changements sensibles et relance `check-debian.sh` lorsqu’il le trouve à côté du script ou dans `kit-vm/`.
+Il synchronise d’abord l’horloge par NTP afin que les dépôts APT soient utilisables. Il sauvegarde ensuite les fichiers remplacés sous `/root/hardening-backups/`. Si aucune clé publique n’est installée pour le compte administrateur, il me demande de la coller, vérifie son format avec `ssh-keygen`, puis l’ajoute à `authorized_keys` avec les permissions adaptées. Il ne désactive l’authentification SSH par mot de passe qu’après cette installation. Il vérifie aussi nginx après les changements sensibles et relance `check-debian.sh` lorsqu’il le trouve à côté du script ou dans `kit-vm/`.
 
 Le script peut être relancé : les règles et fichiers générés sont remplacés proprement, et la base AIDE existante est conservée lorsqu’elle est valide. Sur une VM non encore initialisée, la création de cette base peut ajouter plus de quinze minutes à l’exécution.
 

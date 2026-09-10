@@ -164,10 +164,33 @@ echo "=== D. SSH ==="
 # Ne pas desactiver le mot de passe avant d'avoir installe une cle publique.
 SSH_DIR="/home/$ADMIN_USER/.ssh"
 AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+
 if [ ! -s "$AUTHORIZED_KEYS" ]; then
-    echo "[ERREUR] Aucune cle publique dans $AUTHORIZED_KEYS."
-    echo "Installez la cle de l'hote avant de relancer le script."
-    exit 1
+    echo "Aucune cle publique n'est installee pour $ADMIN_USER."
+    echo "Dans VirtualBox, activez d'abord :"
+    echo "Peripheriques > Presse-papiers partage > Bidirectionnel"
+    echo "Copiez ensuite la ligne complete du fichier .pub depuis l'hote."
+
+    install -d -o "$ADMIN_USER" -g "$(id -gn "$ADMIN_USER")" -m 0700 "$SSH_DIR"
+    TEMP_KEY="$(mktemp)"
+
+    while true; do
+        IFS= read -r -p "Collez la cle publique SSH puis appuyez sur Entree : " SSH_PUBLIC_KEY
+        printf '%s\n' "$SSH_PUBLIC_KEY" > "$TEMP_KEY"
+
+        if ssh-keygen -l -f "$TEMP_KEY" >/dev/null 2>&1; then
+            break
+        fi
+
+        echo "[ERREUR] Cette ligne n'est pas une cle publique SSH valide. Reessayez."
+    done
+
+    ssh-keygen -l -f "$TEMP_KEY"
+    install -o "$ADMIN_USER" -g "$(id -gn "$ADMIN_USER")" -m 0600 \
+        "$TEMP_KEY" "$AUTHORIZED_KEYS"
+    rm -f "$TEMP_KEY"
+    unset SSH_PUBLIC_KEY
+    echo "Cle publique installee dans $AUTHORIZED_KEYS."
 fi
 
 chown -R "$ADMIN_USER:$(id -gn "$ADMIN_USER")" "$SSH_DIR"
