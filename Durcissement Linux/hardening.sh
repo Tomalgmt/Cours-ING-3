@@ -10,6 +10,29 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+echo "=== Synchronisation de l'horloge ==="
+
+# APT refuse les fichiers Release dates dans le futur. C'est notamment
+# possible apres la reprise d'un instantane VirtualBox.
+timedatectl set-timezone Europe/Paris
+timedatectl set-ntp true
+systemctl restart systemd-timesyncd.service 2>/dev/null || true
+
+for attente in {1..60}; do
+    if [ "$(timedatectl show -p NTPSynchronized --value)" = yes ]; then
+        break
+    fi
+    sleep 1
+done
+
+if [ "$(timedatectl show -p NTPSynchronized --value)" != yes ]; then
+    echo "[ERREUR] L'horloge n'a pas pu etre synchronisee par NTP."
+    echo "Verifiez le reseau et la sortie de : timedatectl status"
+    exit 1
+fi
+
+date -R
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 CONFIG_DIR="$SCRIPT_DIR/configs/etc"
 ADMIN_USER="${HARDENING_ADMIN_USER:-${SUDO_USER:-moutsss}}"

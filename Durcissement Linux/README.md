@@ -50,6 +50,19 @@ Je peux ensuite me connecter depuis l’hôte avec :
 ssh -p 2222 moutsss@127.0.0.1
 ```
 
+### Synchronisation de l’horloge
+
+Après la reprise d’un instantané VirtualBox, j’ai constaté que l’horloge de la VM pouvait être décalée. APT refusait alors les fichiers `InRelease` en indiquant qu’ils n’étaient « pas encore valides ». J’ai activé la synchronisation NTP avant toute installation de paquet :
+
+```bash
+sudo timedatectl set-timezone Europe/Paris
+sudo timedatectl set-ntp true
+sudo systemctl restart systemd-timesyncd.service
+timedatectl status
+```
+
+Dans `hardening.sh`, ces commandes sont exécutées dès le début, juste après la vérification des droits root et avant les sauvegardes ou `apt-get update`. Le script attend que `NTPSynchronized` vaille `yes` et s’arrête avec un message explicite si l’horloge n’a pas pu être corrigée.
+
 Après ça on peut suivre le TP et commencer par installer openssh-server si ce n’est pas déjà fait ou lancer le script prepare-debian.sh
 
 Executer le script de dégradation :
@@ -616,7 +629,7 @@ chmod +x hardening.sh
 sudo ./hardening.sh
 ```
 
-Il sauvegarde les fichiers remplacés sous `/root/hardening-backups/`, refuse de désactiver le mot de passe SSH si aucune clé publique n’est installée pour le compte administrateur, vérifie nginx après les changements sensibles et relance `check-debian.sh` lorsqu’il le trouve à côté du script ou dans `kit-vm/`.
+Il synchronise d’abord l’horloge par NTP afin que les dépôts APT soient utilisables. Il sauvegarde ensuite les fichiers remplacés sous `/root/hardening-backups/`, refuse de désactiver le mot de passe SSH si aucune clé publique n’est installée pour le compte administrateur, vérifie nginx après les changements sensibles et relance `check-debian.sh` lorsqu’il le trouve à côté du script ou dans `kit-vm/`.
 
 Le script peut être relancé : les règles et fichiers générés sont remplacés proprement, et la base AIDE existante est conservée lorsqu’elle est valide. Sur une VM non encore initialisée, la création de cette base peut ajouter plus de quinze minutes à l’exécution.
 
