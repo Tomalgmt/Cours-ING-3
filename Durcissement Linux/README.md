@@ -545,18 +545,18 @@ sudo apt install -y aide aide-common
 sudo /usr/sbin/aideinit --yes --force
 ```
 
-Sur ma VM, l’initialisation a duré 13 minutes. J’ai constaté que l’absence de sortie pendant le calcul était normale : le processus lisait le disque et n’a écrit la base qu’à la fin. 
-Le wrapper Debian `aideinit` a automatiquement créé la base active ; je n’ai donc effectué aucune copie manuelle supplémentaire.
+Sur ma VM, l’initialisation a duré 13 minutes.
 
 ```bash
-sudo ls -lh /var/lib/aide/aide.db*
-sudo grep 'AIDE --init return code' /var/log/aide/aideinit.log
+# ici je vérifie que la base a été créée et que les contrôles passent
+sudo ls -lh /var/lib/aide/aide.db
 sudo aide --config=/etc/aide/aide.conf --check
 ```
 
 J’utilise explicitement `--config=/etc/aide/aide.conf`, car la commande générique `sudo aide --check` ne trouve pas automatiquement le fichier de configuration sur cette installation Debian. J’ai obtenu une base `/var/lib/aide/aide.db` d’environ 54 Mo. Les six contrôles de journalisation et d’intégrité passent.
 
 ## K. Mises à jour
+Je commence par installer le paquet `unattended-upgrades` pour activer les mises à jour automatiques :
 
 ```bash
 sudo apt install -y unattended-upgrades
@@ -601,14 +601,9 @@ J’ai confirmé qu’APT interprète cette écriture de la même manière :
 apt-config dump | grep '^APT::Periodic::Unattended-Upgrade'
 ```
 
-Elle affiche `APT::Periodic::Unattended-Upgrade "1";`. J’ai ensuite contrôlé à la fois le test fourni et l’activation réelle :
+Elle affiche `APT::Periodic::Unattended-Upgrade "1";`.
 
-```bash
-grep -rqE 'Unattended-Upgrade"[[:space:]]*"1"' /etc/apt/apt.conf.d/
-apt-config dump | grep -qE '^APT::Periodic::Unattended-Upgrade[[:space:]]+"1";' \
-  && systemctl is-enabled --quiet apt-daily-upgrade.timer \
-  && systemctl is-active --quiet apt-daily-upgrade.timer
-```
+Avec la version du 09/09/2026 du check-debian le test passe, et le service est bien actif après redémarrage.
 
 ## Vérification finale
 
