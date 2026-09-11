@@ -21,6 +21,14 @@ PaaS : ils vendent un OS et c'est a toi de mettre ton logiciel et tes données e
 SaaS : ils vendent un software et donnent l'accès aux données et paramétrages
 
 Y a 3 types de cloud : 
-Publique        (OVH, AWS, Azure, GCP)          Information réduites sur l'infrastructure et couts variables, mais plus de flexibilité et de scalabilité
-Communautaire   (ex : cloud de l'armée)         
+Publique        (OVH, AWS, Azure, GCP)              Information réduites sur l'infrastructure et couts variables, mais plus de flexibilité et de scalabilité
+Communautaire   (ex : cloud de l'armée ou la sante) Les décisions de changement peuvent etre lentes et la mise en place initiale peut etre lourde
 Privé           (ex : cloud d'une entreprise)
+Hybride         (ex : cloud d'une entreprise qui utilise aussi un cloud public)
+
+Les problemes on premise sont aussi sur le cloud
+
+Triade CIA : 
+Confidentialité : Les données sont accessibles uniquement par les personnes autorisées
+Intégrité : Les données ne peuvent pas etre modifiées par des personnes non autorisées
+Availability : Les données sont accessibles par les personnes autorisées quand elles en ont besoin
