@@ -1,0 +1,26 @@
+2 types d'hyper viseurs : 
+
+- Bare Metal (Hyper-V ou VMware ESXi)
+- type 2 (par ex : virtualbox ou Oracle VirtualBox)
+
+L'objectif du cloud : mutualiser la ressource matérielle pour réduire les coûts et augmenter la flexibilité surtout.
+Parce que avant y avait un serveur physique par application, maintenant on peut mutualiser les ressources matérielles pour faire tourner plusieurs applications sur un même serveur physique.
+
+Le cloud a été créé par Amazon pour avoir accès aux ressources a la demande depuis n'importe quel endroit, pour avoir une scalabilité et une flexibilité plus importante, pour réduire les coûts et pour avoir un meilleur contrôle sur les ressources.
+
+ça s'est imposé car ça permet d'etre ultra flexible, et aussi pour réduire les couts, la tolérence aux pannes etc ... 
+
+5 points de sécurité du cloud :
+- libre service à la demande : Obtenir une resssource sans interaction humaine du fournisseur : console, ligne de commande ou API
+- Accès réseau étendu : Ressources jointes par des protocoles standards, depuis n'importe quel endroit
+- Mutualisation des ressources : Plusieurs clients partagent les mêmes ressources physiques, avec isolation logique
+... Voir les slides
+
+IaaS : ils vendent l'architecture et c'est a toi de mettre ton os, ton app et des data etc ... 
+PaaS : ils vendent un OS et c'est a toi de mettre ton logiciel et tes données et paramétrages (Utilisé par les devops etc pour avoir un runtime)
+SaaS : ils vendent un software et donnent l'accès aux données et paramétrages
+
+Y a 3 types de cloud : 
+Publique        (OVH, AWS, Azure, GCP)          Information réduites sur l'infrastructure et couts variables, mais plus de flexibilité et de scalabilité
+Communautaire   (ex : cloud de l'armée)         
+Privé           (ex : cloud d'une entreprise)
