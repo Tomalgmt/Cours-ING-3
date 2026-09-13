@@ -289,22 +289,25 @@ Ces résultats montrent qu'un analyseur doit être utilisé dans son domaine de 
 
 ## 6 Synthèse et grille d'audit
 
-La grille ci-dessous évalue la configuration conçue dans le TP. Les politiques volontairement vulnérables `a.json`, `b.json` et `c.json` sont des objets d'audit et ne sont pas considérées comme déployées dans l'état final.
+**Compte racine : non évaluable.** Moto ne permet pas de vérifier le MFA matériel ni l'absence d'utilisation du compte racine. Dans AWS, les paramètres du compte et CloudTrail serviraient de preuves.
 
-| Point de contrôle | Respecté ? | Justification dans le TP | Mesure à ajouter et preuve pour un auditeur |
-|---|:---:|---|---|
-| Compte racine scellé, sous MFA matériel, inutilisé au quotidien | Non évalué | Moto ne représente pas la gouvernance du compte racine et aucun MFA réel n'est configuré. | Dans un vrai compte : retirer toute clé du compte racine, activer un MFA matériel et surveiller son utilisation. Preuves : paramètres du compte, rapport d'identifiants IAM et événements CloudTrail concernant l'utilisateur racine. |
-| Authentification fédérée et MFA résistant au phishing pour les humains | Non | L'utilisateur `analyste` est un utilisateur IAM local et non une identité humaine fédérée. | Utiliser IAM Identity Center avec un fournisseur d'identité et des facteurs FIDO2 ou WebAuthn. Preuves : configuration de la fédération, règles MFA du fournisseur et journaux d'authentification. |
-| Rôles et identifiants temporaires pour les humains, les workloads et la CI | Partiellement | `RoleLecture` et le rôle OIDC de la CI utilisent STS. La clé statique de `analyste` est supprimée, mais l'identité humaine reste locale. | Généraliser l'accès humain fédéré et attribuer les droits par rôles. Preuves : événements `AssumeRole`, sessions Identity Center et absence de clés permanentes actives. |
-| Politiques versionnées, revues et testées | Partiellement | Les politiques sont rédigées en JSON et analysées par Parliament, mais aucun dépôt, processus de revue ni test CI n'est démontré. | Stocker les politiques dans Git, imposer une revue par pull request et exécuter les analyseurs en CI. Preuves : historique Git, approbations et journaux de pipeline. |
-| Recertification périodique des droits | Non | Aucun cycle de revue des accès n'est représenté par l'émulateur. | Mettre en place une campagne trimestrielle ou semestrielle avec propriétaires et révocation des droits inutiles. Preuves : rapports de campagne, décisions des responsables et tickets de retrait. |
-| Environnements séparés par comptes distincts | Non | Moto utilise un unique compte émulé `123456789012`. | Employer AWS Organizations avec des comptes distincts pour développement, test et production, protégés par des SCP. Preuves : inventaire des comptes, structure des unités organisationnelles et politiques SCP. |
-| Aucune action ou ressource en `*` hors cas encadré | Oui pour l'état final | `lecture.json` n'utilise que des actions précises. Le suffixe `*` des ARN S3 est encadré par les préfixes `2026/` et `2026/entrant/`. Les jokers dangereux des politiques d'exercice ne sont pas repris. | En production, ajouter un contrôle automatique bloquant les jokers non justifiés. Preuves : résultats Parliament, IAM Access Analyzer et règles de pipeline. |
-| Aucune clé d'accès statique | Oui pour l'état final | La clé de `analyste` est supprimée et la CI utilise OIDC avec des identifiants STS temporaires. | Vérifier régulièrement qu'aucune nouvelle clé n'est créée. Preuves : rapport d'identifiants IAM, requêtes AWS Config et événements CloudTrail `CreateAccessKey`. |
-| Aucun compte partagé ni compte local non fédéré | Non | `analyste` n'est pas partagé, mais reste un compte IAM local non fédéré. | Remplacer les utilisateurs IAM humains par des identités nominatives fédérées. Preuves : annuaire du fournisseur, affectations Identity Center et absence d'utilisateurs IAM humains. |
-| Aucun secret dans le code ou les tickets | Oui sur les fichiers proposés | Les politiques et relations de confiance ne contiennent aucune clé. OIDC évite de stocker une clé AWS dans GitHub Actions. | Activer l'analyse de secrets et contrôler l'historique Git ainsi que les variables CI. Preuves : rapports de secret scanning, configuration du dépôt et procédure de rotation en cas d'alerte. |
+**Authentification fédérée des humains : non respectée.** `analyste` est un utilisateur IAM local ; il faudrait utiliser IAM Identity Center avec un MFA FIDO2 ou WebAuthn.
 
-Les points non couverts les plus importants sont la protection du compte racine, l'authentification humaine fédérée, la recertification périodique et la séparation des environnements par comptes. Ils dépendent d'une organisation AWS réelle et ne peuvent pas être prouvés avec Moto seul.
+**Rôles et identifiants temporaires : partiellement respecté.** Le rôle de lecture et la CI utilisent STS, mais l'utilisateur humain reste local au lieu d'être fédéré.
+
+**Politiques versionnées, revues et testées : partiellement respecté.** Les fichiers sont analysés par Parliament, mais il faudrait aussi les versionner dans Git et imposer une revue ainsi que des tests en CI.
+
+**Recertification périodique des droits : non respectée.** Une revue régulière des accès et des preuves de validation ou de révocation devraient être mises en place dans un vrai compte.
+
+**Séparation des environnements : non respectée.** Moto utilise un seul compte ; en production, développement, test et production devraient être séparés dans plusieurs comptes AWS Organizations.
+
+**Absence de jokers non encadrés : respectée dans l'état final.** Les actions sont précises et les `*` des ARN S3 sont limités aux préfixes `2026/` et `2026/entrant/`.
+
+**Absence de clé statique : respectée dans l'état final.** La clé de `analyste` est supprimée et la CI obtient des identifiants temporaires par OIDC.
+
+**Absence de compte local non fédéré : non respectée.** L'utilisateur `analyste` devrait être remplacé par une identité nominative fédérée.
+
+**Absence de secret dans le code : respectée.** Aucun secret n'apparaît dans les fichiers et OIDC évite de stocker une clé AWS dans GitHub Actions.
 
 ## Conclusion
 
