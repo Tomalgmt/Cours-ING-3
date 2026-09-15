@@ -1,0 +1,38 @@
+Voir les slides 
+
+On peut avoir un vpn pour se connecter a son réseau (au prof) pour avoir un range de simulation pour le monitoring etc ...
+
+le venv python permet de faire du versionning surtout sur les librairies de crypto
+
+Matin : Cool
+Aprem : CLC (Normes et standards)
+
+Glossaire : 
+ICS: Industrial Control System
+CPS: Cyber-Physical System
+CT : Control Technology
+IIOT : Industrial Internet of Things
+XIOT: Extended Internet of Things
+PLC : Programmable Logic Controller (ex : Raspberry Pi (pas télécommandé))
+RTU : Remote Terminal Unit          ( ex : Arduino (télécommandé))
+IACS : Systemes d'automatisation et de contrôle industriels
+IEEE : Institute of Electrical and Electronics Engineers
+SCDA : Supervisory Control and Data Acquisition
+IHM : Interface Homme-Machine
+
+Ethernet en fait c'est IEEE 802.3
+BLE : Bluetooth Low Energy c'est IEEE 802.15.4
+
+Pour les PLC on va utiliser un language un peu plus bas niveau que l'assembleur.
+Grafcet : language de flux spécialisé
+
+Y a plusieurs entreprises de constructeurs de PLC avec des logiciels pour les programmer exemple : TIAV17 chez Siemens,
+CODESYS chez Schneider, 
+En russie il y a un logiciel qui s'appelle "Ladder" pour programmer les PLC. 
+
+Volt : tension U
+Ampère : intensité I
+Puissance : P
+
+Autodesk electrical et Eplan sont des logiciels pour faire des schémas électriques
+

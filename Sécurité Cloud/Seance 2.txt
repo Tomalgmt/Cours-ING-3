@@ -1,0 +1,33 @@
+Un VPC/Vnet : réeau privé virtuel et isolé défini par un logiciel. ex : 10.0.0.0/16 
+
+subnet : sous-réseau d'un VPC/Vnet. ex : 10.10.0.0/24 et 10.20.0.0/24
+
+Tables de routage : ça permet de faire des routages entre les sous réseaux / réseaux ça rend une ressource joignable
+
+Interconnextion : peerint, VPN site a site, liens dédiés, Transit gateway, interconnexion avec un autre cloud ça étend la surface d'attaque.
+
+K8S/kms c'est le serveur de gestion de clés, il permet de gérer les clés de chiffrement pour les données au repos et en transit. Il est essentiel pour la sécurité des données dans le cloud.
+
+mTLS : mutual TLS permet d'assurer l'authentification mutuelle entre deux services, garantissant que les deux parties sont bien celles qu'elles prétendent être. Cela renforce la sécurité des communications dans un environnement cloud.
+
+Algo symetrique : AES256, ChaCha20, Blowfish, Twofish, RC4, DES, 3DES
+Algo asymetrique : RSA, DSA, ECDSA, EdDSA, Diffie-Hellman
+
+Règle des 3-2-1 : 3 copies des données, 2 supports différents, 1 copie hors site. 
+Cela permet de garantir la disponibilité et la résilience des données en cas de sinistre.
+
+PCA : Plant de continuité et de reprise d'activité. Il s'agit d'un ensemble de procédures et de mesures mises en place pour assurer la continuité des opérations en cas de sinistre ou d'incident majeur.
+
+RTO : Recovery time objective, c'est le temps maximum acceptable pour restaurer un service après un incident. Il définit la durée pendant laquelle une application ou un service peut être indisponible avant que cela n'ait un impact significatif sur l'entreprise.
+RPO : Recovery point objective, c'est le point dans le temps auquel les données doivent être restaurées après un incident. Il définit la quantité maximale de données que l'entreprise peut se permettre de perdre en cas de sinistre.
+
+Ces deux sont définis dans la SLA : Service Level Agreement.
+
+EDR : Endpoint Detection and Response, c'est une solution de sécurité qui permet de détecter, d'analyser et de répondre aux menaces sur les terminaux (ordinateurs, serveurs, etc.). Elle offre une visibilité approfondie sur les activités des endpoints et permet de réagir rapidement aux incidents de sécurité.
+La différence entre un EDR et un antivirus est que l'antivirus se concentre principalement sur la détection et la suppression des logiciels malveillants connus, tandis que l'EDR offre une approche plus proactive en surveillant le comportement des endpoints, en détectant les menaces avancées et en fournissant des capacités de réponse aux incidents.
+Un antivirus a une liste de signatures de virus connus, tandis qu'un EDR utilise des techniques d'analyse comportementale et d'intelligence artificielle pour identifier les menaces inconnues ou sophistiquées.
+
+Le runtime containerd c'est un runtime de conteneurs qui permet d'exécuter et de gérer des conteneurs dans un environnement cloud. Il est utilisé pour isoler les applications et leurs dépendances, offrant ainsi une meilleure sécurité et une gestion plus efficace des ressources.
+C'est l'environnement d'execution dans un Paas il fournit l'environnement d'exécution pour les applications conteneurisées, permettant aux développeurs de déployer et de gérer facilement leurs applications dans le cloud.
+
+L'isolation des conteneurs est plus faible qu'une machine virtuelle.
