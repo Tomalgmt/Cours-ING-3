@@ -36,3 +36,140 @@ Puissance : P
 
 Autodesk electrical et Eplan sont des logiciels pour faire des schémas électriques
 
+Les clés des serrures des constructeurs sont nommées par modele de serrure : 405 455 H520 2342E 1242E
+Engins de chantiers ont aussi des clés universels, la poste c'est PTT, avec T et S10
+Certains demareurs sont aussi universels (notemment des chinois)
+Les clés techniques aussi universelles (triangles carrées etc ...)
+Cabinet de tgv etc etc... 
+
+"y a rien de plus permanant qu'une solution temporaire" 
+Exemple : une barrire qui monte et qui descend ouvert, t'ouvres tu dumb tout les clés et tu peux controler 
+
+leds infrarouges pour empecher les camera, acheter des vestes de constructeurs sur vinted par exemple.
+
+EPI : Equipements de Protection Individuelle
+EPC : Equipements de Protection Collective ex : carrénage antibruit
+
+Un certificat ssl se RENOUVELLEMENT valide pour 90 jours, il faut le renouveler tous les 90 jours.
+
+Certificat SSL : Secure Sockets Layer chiffrement asymétrique.
+CRC32 : verification d'intégrité de fichier, c'est un hash qui permet de vérifier que le fichier n'a pas été modifié. (checksum)
+
+OPC-UA : Open Platform Communications Unified Architecture, c'est un protocole de communication pour les systèmes industriels. Il permet l'interopérabilité entre différents équipements et logiciels dans un environnement industriel.
+
+On peut définir un constructeur avec l'adresse mac car ils ont leurs id sur les deux premiers bits
+On peut faire du coup du MAC spoofing pour se faire passer pour un constructeur et avoir accès à des équipements.
+
+Quand on sait ce qu'on a sur le réseau on peut augmmenter le niveau de maturité (on augmente de confiance)
+
+Matrice des flux clairs, etc ... Donne une maturité suffisante pour avancer.
+
+La deception dans l'environnement militaire c'est faire croire a un ennemis qu'il a raison alors qu'il a tort.
+Y a des honeypots et des honeytokens
+un honeypots c'est toute une infra pour piéger, un honeytoken c'est un fichier/mdp/hash/token dans une vraie infra pour piéger.
+
+Exemple de honeypot : conpot
+
+Sonde réseaux : Voir Claroty, CUSTOCY, ORAGOS, STORMSHIELD... 
+Solution open source : Malcolm
+
+Wireshark a été programmé avec zic
+
+IEC62443
+
+IEC62443-1 : General ça fournit une vue d'ensemble de la sécurité industrielle
+Site du CCP plus pratique que US car c'est plus court et plus digeste.
+
+Concept : zone et conduits.
+Zone : groupe d'appareils avec une exigence de risque similaire et qui doivent communiquer entre eux.
+Conduits : moyen de lier les zones.
+
+Différents security levels : SL0 : pas de sécurité, SL4 : protege contre des menaces avancées avec des ressources importantes. 
+
+PAM : privilege access management.
+
+Défense en profondeur : mettre plusieurs couches de sécurité pour protéger un système. 
+Exemple : firewall, antivirus, chiffrement, authentification multi-facteurs.
+
+PSSI : Politique de sécurité des systèmes d'information. C'est un document qui définit les règles et les bonnes pratiques pour assurer la sécurité des systèmes d'information d'une organisation.
+
+PCA et PAA : Plan de continuité d'Activité et Politique d'authentification et d'autorisation. 
+Ces politiques définissent comment les utilisateurs peuvent accéder aux ressources et comment ils sont authentifiés et autorisés à effectuer certaines actions.
+
+PCA : Voir les données et leurs contexte, Puis reprise infrastructure technique avev procédures fonctionnelles dégradées. Juste après on fait une restauration sauvegarde. Enfin On fait une reconstruction de données de T(-1) à T0 puis reprise vers une activitée normale.
+
+IDS : alertes et detections d'activitées suspectes.
+IPS : blocage en temp réel
+
+TODO : Apprendre a setup un wireguard. (un vpn avec un vps a 5 balles)
+
+NAC : Network Access Control, c'est un système qui contrôle l'accès au réseau en fonction de l'identité de l'utilisateur et de l'état de son appareil. Il permet de s'assurer que seuls les utilisateurs autorisés et les appareils conformes aux politiques de sécurité peuvent accéder au réseau.
+
+######################################################################################################################################################
+######################################################################################################################################################
+EXERCICE DE CARTOGRAPHIE : 
+
+separation de admin avec les autres
+Pourquoi le routeur R1 est any <=> any ? => ? 
+PLC : pourquoi tout le monde a accès au plc ? 
+Internet -> R1 -> SW -> Equipements ? Normal ??? 
+
+Actions : 
+Separer les lan en Niveaux
+Niveau 0 : Admin (accès a tout)
+Niveau 1 : Ingénieur (accès a la prod)
+Niveau 2 : Workspace
+
+Déconnecter le SW1 du routeur R1 a un routeur2
+Ajouter le PLC1 dans le lan OT/PROD avec connexion au switch SW1
+
+Switch/routeur "central" avec accès internet : 
+Ingénieur et workspace accès internet, pas admin
+Ingénieur et admin accès LAN Prod
+Enlever l'accès au LAN prod
+++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Switch/routeur2 : 
+accès LAN prod, admin et ingénieur
+
+Matrice des flux : (exemple)
+Source      Destination     PROTOCOLE       PORT        STATUT          JUSTIFICATION
+SCADA_01    PLC_LigneA      ModbusTCP       502         Autorisé        Supervision Production
+
+ROUTEUR1 : 
+Source      Destination     PROTOCOLE       PORT        STATUT          JUSTIFICATION
+LAN_ADMIN   Internet        any             any         Bloqué          Pas d'accès internet pour les admins
+LAN_PROD    Internet        any             any         Bloqué          La production n'a pas besoin d'accès internet
+0.0.0.0     LAN_ADMIN       any             any         Bloqué          Pas d'accès internet pour le lan admin
+0.0.0.0     LAN_prod        any             any         Bloqué          Pas d'accès internet pour le lan prod
+any         any             any             any         Autorisé        Sécurité par défaut
+
+ROUTEUR2 : 
+Source      Destination     PROTOCOLE       PORT        STATUT          JUSTIFICATION
+LAN_ADMIN   LAN_PROD        any             any         Autorisé        Accès nécessaire pour la supervision et le contrôle de la production
+LAN_INGE    LAN_PROD        any             any         Autorisé        Accès nécessaire pour la supervision et le contrôle de la production
+any         any             any             any         Bloqué          Sécurité par défaut
+
+Marque des PLC : Siemens pas modbus , pas pcua
+######################################################################################################################################################
+######################################################################################################################################################
+
+NIST SP: 800-82 R3 c'est un guide de sécurité pour les systèmes de contrôle industriels (ICS). Il fournit des recommandations pour protéger les ICS contre les cybermenaces et les vulnérabilités. Le document couvre divers aspects de la sécurité, y compris la gestion des risques, la protection des réseaux, la surveillance et la réponse aux incidents.
+la gamme des 800 c'est pour la cyber, se base sur un framework connu mais non certifiant. C'est une démarche.
+
+62-443 est une norme certifiant la sécurité des systèmes de contrôle industriels (ICS). 
+Alors que le NIST SP 800-82 fournit des recommandations et des bonnes pratiques pour la sécurité des ICS, la norme IEC 62443 établit des exigences spécifiques pour la conception, l'implémentation et la maintenance de systèmes de contrôle industriels sécurisés. Elle définit également des niveaux de sécurité (SL) pour évaluer la robustesse d'un système face aux menaces potentielles.
+
+DCS : Distributed Control System, c'est un système de contrôle distribué utilisé dans les environnements industriels pour surveiller et contrôler des processus complexes. Contrairement aux systèmes centralisés, les DCS répartissent les fonctions de contrôle sur plusieurs unités de traitement, ce qui permet une meilleure résilience et une plus grande flexibilité dans la gestion des processus industriels.
+
+RAG : Serveur qui tokenise le document et tu met une IA pour pouvoir tokeniser (Voir Ragflow avec une backdoor dedans)
+
+NERC CIP : NERC Cybersecurity for Critical Infrastructure Protection. 
+C'est un ensemble de normes et de recommandations développées par le NERC (North American Electric Reliability Corporation) pour protéger les infrastructures critiques contre les menaces cyber.
+
+https://docs.google.com/spreadsheets/d/15NOFll0blQkDpwZn7t5vl3nRCHLgY4Cd/edit?gid=1523566735#gid=1523566735
+
+Directive NIS2 : Directive européenne sur la cybersécurité des infrastructures critiques.
+une directive c'est "va au point b peu importe comment"
+
+Voir sur whatsapp pour tout les liens de docs.
