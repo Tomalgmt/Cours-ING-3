@@ -1,0 +1,121 @@
+On va commencer : 
+
+1) 
+hello est un executable 64bits 
+avec ```file hello``` : 
+
+hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=2b2d765f2008e95922889ba62565064c2379812b, for GNU/Linux 3.2.0, with debug_info, not stripped
+
+2)
+On va maintenant lire les sections avec readelf -S
+
+└─$ readelf -S hello 
+There are 36 section headers, starting at offset 0x3af0:
+
+Section Headers:
+  [Nr] Name              Type             Address           Offset
+       Size              EntSize          Flags  Link  Info  Align
+  [ 0]                   NULL             0000000000000000  00000000
+       0000000000000000  0000000000000000           0     0     0
+  [ 1] .note.gnu.pr[...] NOTE             0000000000400350  00000350
+       0000000000000020  0000000000000000   A       0     0     8
+  [ 2] .note.gnu.bu[...] NOTE             0000000000400370  00000370
+       0000000000000024  0000000000000000   A       0     0     4
+  [ 3] .interp           PROGBITS         0000000000400394  00000394
+       000000000000001c  0000000000000000   A       0     0     1
+  [ 4] .gnu.hash         GNU_HASH         00000000004003b0  000003b0
+       000000000000001c  0000000000000000   A       5     0     8
+  [ 5] .dynsym           DYNSYM           00000000004003d0  000003d0
+       0000000000000090  0000000000000018   A       6     1     8
+  [ 6] .dynstr           STRTAB           0000000000400460  00000460
+       0000000000000068  0000000000000000   A       0     0     1
+  [ 7] .gnu.version      VERSYM           00000000004004c8  000004c8
+       000000000000000c  0000000000000002   A       5     0     2
+  [ 8] .gnu.version_r    VERNEED          00000000004004d8  000004d8
+       0000000000000040  0000000000000000   A       6     1     8
+  [ 9] .rela.dyn         RELA             0000000000400518  00000518
+       0000000000000030  0000000000000018   A       5     0     8
+  [10] .rela.plt         RELA             0000000000400548  00000548
+       0000000000000048  0000000000000018  AI       5    23     8
+  [11] .init             PROGBITS         0000000000401000  00001000
+       0000000000000017  0000000000000000  AX       0     0     4
+  [12] .plt              PROGBITS         0000000000401020  00001020
+       0000000000000040  0000000000000010  AX       0     0     16
+  [13] .text             PROGBITS         0000000000401060  00001060
+       0000000000000156  0000000000000000  AX       0     0     16
+  [14] .fini             PROGBITS         00000000004011b8  000011b8
+       0000000000000009  0000000000000000  AX       0     0     4
+  [15] .rodata           PROGBITS         0000000000402000  00002000
+       0000000000000035  0000000000000000   A       0     0     4
+  [16] .eh_frame_hdr     PROGBITS         0000000000402038  00002038
+       0000000000000034  0000000000000000   A       0     0     4
+  [17] .eh_frame         PROGBITS         0000000000402070  00002070
+       00000000000000c4  0000000000000000   A       0     0     8
+  [18] .note.ABI-tag     NOTE             0000000000402134  00002134
+       0000000000000020  0000000000000000   A       0     0     4
+  [19] .init_array       INIT_ARRAY       0000000000403df8  00002df8
+       0000000000000008  0000000000000008  WA       0     0     8
+  [20] .fini_array       FINI_ARRAY       0000000000403e00  00002e00
+       0000000000000008  0000000000000008  WA       0     0     8
+  [21] .dynamic          DYNAMIC          0000000000403e08  00002e08
+       00000000000001d0  0000000000000010  WA       6     0     8
+  [22] .got              PROGBITS         0000000000403fd8  00002fd8
+       0000000000000010  0000000000000008  WA       0     0     8
+  [23] .got.plt          PROGBITS         0000000000403fe8  00002fe8
+       0000000000000030  0000000000000008  WA       0     0     8
+  [24] .data             PROGBITS         0000000000404018  00003018
+       0000000000000010  0000000000000000  WA       0     0     8
+  [25] .bss              NOBITS           0000000000404028  00003028
+       0000000000000008  0000000000000000  WA       0     0     1
+  [26] .comment          PROGBITS         0000000000000000  00003028
+       000000000000001f  0000000000000001  MS       0     0     1
+  [27] .debug_aranges    PROGBITS         0000000000000000  00003047
+       0000000000000030  0000000000000000           0     0     1
+  [28] .debug_info       PROGBITS         0000000000000000  00003077
+       000000000000013b  0000000000000000           0     0     1
+  [29] .debug_abbrev     PROGBITS         0000000000000000  000031b2
+       00000000000000e1  0000000000000000           0     0     1
+  [30] .debug_line       PROGBITS         0000000000000000  00003293
+       000000000000006c  0000000000000000           0     0     1
+  [31] .debug_str        PROGBITS         0000000000000000  000032ff
+       00000000000000e7  0000000000000001  MS       0     0     1
+  [32] .debug_line_str   PROGBITS         0000000000000000  000033e6
+       000000000000004f  0000000000000001  MS       0     0     1
+  [33] .symtab           SYMTAB           0000000000000000  00003438
+       0000000000000378  0000000000000018          34    18     8
+  [34] .strtab           STRTAB           0000000000000000  000037b0
+       00000000000001d5  0000000000000000           0     0     1
+  [35] .shstrtab         STRTAB           0000000000000000  00003985
+       0000000000000166  0000000000000000           0     0     1
+
+Ici on voit bien par exemple le .data qui demarre a ox0000000000404018
+
+3) On va ensuite repérer le main avec nm ou objdump -d hello 
+
+On a un giga doc et avec un petit grep sur le printf ou trouve l'addresse et on voit que c'est dans la section plt soit les bibliotheques dynamiques ou alors
+le main 
+
+└─$ objdump -d hello | grep main  
+  40107b:       ff 15 57 2f 00 00       call   *0x2f57(%rip)        # 403fd8 <__libc_start_main@GLIBC_2.34>
+0000000000401196 <main>:
+
+On peut suivre l'appel de cet adresse et on voit que c'est appelé par 
+0000000000401146 <getName>:
+  401146:       55                      push   %rbp
+
+et dans le main : 
+  4011aa:       e8 97 ff ff ff          call   401146 <getName>
+
+Complexité cyclomatique (McCabe)
+Mesure le nombre de chemins dépendants dans un programme
+Formule : M = E - N + 2P (E=aretes, N=noeuds, P= composants connexes)
+
+Interet : évaluer la difficulté de tests et de maintenance
+En RE : Repérer les fonctiosn les plus complexes à analyser
+
+Les limites : 
+Pseudocode vs source original : ça donne pas le code source d'origine
+Les indentations sont générées par l'outil et le décompilateur ne fait que deviner
+Plus un binaire est optimisé, plus il va etre obfusqué
+
+Voir la chaine youtube de john Hammond qui reverse des malwares
