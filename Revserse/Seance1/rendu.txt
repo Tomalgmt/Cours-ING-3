@@ -119,3 +119,18 @@ Les indentations sont générées par l'outil et le décompilateur ne fait que d
 Plus un binaire est optimisé, plus il va etre obfusqué
 
 Voir la chaine youtube de john Hammond qui reverse des malwares
+
+
+
+
+Ici on va Hacker le license_check
+
+On analyse l'exe dans ghidra et on va faire en sorte de le hacker.
+
+On recherche en premier les mots clés LICENSE et VALID
+
+En gros c'est un xor sur une chaine qui est comparée a secretMask quoi
+
+Et on va maintenant faire un script keygen qui prend en parametre l'executable et qui analyse l'executable, repere la chaine a comparer et fais un reverse avec le mask
+
+
