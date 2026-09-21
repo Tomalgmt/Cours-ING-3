@@ -28,6 +28,7 @@ Grafcet : language de flux spécialisé
 
 Y a plusieurs entreprises de constructeurs de PLC avec des logiciels pour les programmer exemple : TIAV17 chez Siemens,
 CODESYS chez Schneider, 
+
 En russie il y a un logiciel qui s'appelle "Ladder" pour programmer les PLC. 
 
 Volt : tension U
@@ -42,8 +43,8 @@ Certains demareurs sont aussi universels (notemment des chinois)
 Les clés techniques aussi universelles (triangles carrées etc ...)
 Cabinet de tgv etc etc... 
 
-"y a rien de plus permanant qu'une solution temporaire" 
-Exemple : une barrire qui monte et qui descend ouvert, t'ouvres tu dumb tout les clés et tu peux controler 
+"y a rien de plus permanent qu'une solution temporaire" 
+Exemple : une barriere qui monte et qui descend ouvert, t'ouvres tu dump toutes les clés et tu peux controler 
 
 leds infrarouges pour empecher les camera, acheter des vestes de constructeurs sur vinted par exemple.
 
@@ -60,7 +61,7 @@ OPC-UA : Open Platform Communications Unified Architecture, c'est un protocole d
 On peut définir un constructeur avec l'adresse mac car ils ont leurs id sur les deux premiers bits
 On peut faire du coup du MAC spoofing pour se faire passer pour un constructeur et avoir accès à des équipements.
 
-Quand on sait ce qu'on a sur le réseau on peut augmmenter le niveau de maturité (on augmente de confiance)
+Quand on sait ce qu'on a sur le réseau on peut augmenter le niveau de maturité (on augmente de confiance)
 
 Matrice des flux clairs, etc ... Donne une maturité suffisante pour avancer.
 
@@ -96,7 +97,7 @@ PSSI : Politique de sécurité des systèmes d'information. C'est un document qu
 PCA et PAA : Plan de continuité d'Activité et Politique d'authentification et d'autorisation. 
 Ces politiques définissent comment les utilisateurs peuvent accéder aux ressources et comment ils sont authentifiés et autorisés à effectuer certaines actions.
 
-PCA : Voir les données et leurs contexte, Puis reprise infrastructure technique avev procédures fonctionnelles dégradées. Juste après on fait une restauration sauvegarde. Enfin On fait une reconstruction de données de T(-1) à T0 puis reprise vers une activitée normale.
+PCA : Voir les données et leurs contexte, Puis reprise infrastructure technique avec procédures fonctionnelles dégradées. Juste après on fait une restauration sauvegarde. Enfin On fait une reconstruction de données de T(-1) à T0 puis reprise vers une activitée normale.
 
 IDS : alertes et detections d'activitées suspectes.
 IPS : blocage en temp réel
@@ -127,7 +128,6 @@ Switch/routeur "central" avec accès internet :
 Ingénieur et workspace accès internet, pas admin
 Ingénieur et admin accès LAN Prod
 Enlever l'accès au LAN prod
-++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 Switch/routeur2 : 
 accès LAN prod, admin et ingénieur
