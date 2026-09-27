@@ -1,0 +1,80 @@
+Starting Nmap 7.99 ( https://nmap.org ) at 2026-09-17 09:12 -0400
+Initiating Ping Scan at 09:12
+Scanning 10.1.1.20 [4 ports]
+Completed Ping Scan at 09:12, 0.03s elapsed (1 total hosts)
+Initiating Parallel DNS resolution of 1 host. at 09:12
+Completed Parallel DNS resolution of 1 host. at 09:12, 4.01s elapsed
+Initiating SYN Stealth Scan at 09:12
+Scanning 10.1.1.20 [65535 ports]
+Discovered open port 80/tcp on 10.1.1.20
+SYN Stealth Scan Timing: About 17.34% done; ETC: 09:15 (0:02:28 remaining)
+SYN Stealth Scan Timing: About 39.59% done; ETC: 09:16 (0:02:10 remaining)
+SYN Stealth Scan Timing: About 54.59% done; ETC: 09:15 (0:01:36 remaining)
+Increasing send delay for 10.1.1.20 from 0 to 5 due to 51 out of 169 dropped probes since last increase.
+Increasing send delay for 10.1.1.20 from 5 to 10 due to 61 out of 201 dropped probes since last increase.
+SYN Stealth Scan Timing: About 34.02% done; ETC: 09:19 (0:04:41 remaining)
+Increasing send delay for 10.1.1.20 from 10 to 20 due to 101 out of 335 dropped probes since last increase.
+Increasing send delay for 10.1.1.20 from 20 to 40 due to max_successful_tryno increase to 4
+Increasing send delay for 10.1.1.20 from 40 to 80 due to max_successful_tryno increase to 5
+Increasing send delay for 10.1.1.20 from 80 to 160 due to max_successful_tryno increase to 6
+Increasing send delay for 10.1.1.20 from 160 to 320 due to max_successful_tryno increase to 7
+Increasing send delay for 10.1.1.20 from 320 to 640 due to max_successful_tryno increase to 8
+Increasing send delay for 10.1.1.20 from 640 to 1000 due to max_successful_tryno increase to 9
+SYN Stealth Scan Timing: About 13.16% done; ETC: 09:34 (0:19:15 remaining)
+Warning: 10.1.1.20 giving up on port because retransmission cap hit (10).
+SYN Stealth Scan Timing: About 13.17% done; ETC: 09:38 (0:22:32 remaining)
+SYN Stealth Scan Timing: About 13.17% done; ETC: 09:42 (0:25:49 remaining)
+SYN Stealth Scan Timing: About 13.18% done; ETC: 09:45 (0:29:05 remaining)
+SYN Stealth Scan Timing: About 13.19% done; ETC: 09:49 (0:32:22 remaining)
+SYN Stealth Scan Timing: About 13.20% done; ETC: 09:53 (0:35:37 remaining)
+SYN Stealth Scan Timing: About 13.21% done; ETC: 09:57 (0:38:53 remaining)
+SYN Stealth Scan Timing: About 13.21% done; ETC: 10:01 (0:42:09 remaining)
+SYN Stealth Scan Timing: About 13.22% done; ETC: 10:04 (0:45:24 remaining)
+SYN Stealth Scan Timing: About 13.23% done; ETC: 10:08 (0:48:39 remaining)
+SYN Stealth Scan Timing: About 13.24% done; ETC: 10:12 (0:51:54 remaining)
+SYN Stealth Scan Timing: About 13.24% done; ETC: 10:15 (0:55:08 remaining)
+SYN Stealth Scan Timing: About 13.25% done; ETC: 10:19 (0:58:23 remaining)
+SYN Stealth Scan Timing: About 13.26% done; ETC: 10:23 (1:01:56 remaining)
+SYN Stealth Scan Timing: About 13.27% done; ETC: 10:28 (1:05:49 remaining)
+SYN Stealth Scan Timing: About 13.27% done; ETC: 10:32 (1:09:41 remaining)
+SYN Stealth Scan Timing: About 13.28% done; ETC: 10:37 (1:13:53 remaining)
+SYN Stealth Scan Timing: About 13.29% done; ETC: 10:42 (1:18:23 remaining)
+SYN Stealth Scan Timing: About 13.30% done; ETC: 10:48 (1:23:12 remaining)
+SYN Stealth Scan Timing: About 13.31% done; ETC: 10:53 (1:28:00 remaining)
+SYN Stealth Scan Timing: About 13.33% done; ETC: 10:59 (1:33:08 remaining)
+SYN Stealth Scan Timing: About 13.34% done; ETC: 11:06 (1:38:32 remaining)
+SYN Stealth Scan Timing: About 13.35% done; ETC: 11:12 (1:44:17 remaining)
+SYN Stealth Scan Timing: About 13.36% done; ETC: 11:19 (1:50:19 remaining)
+SYN Stealth Scan Timing: About 13.38% done; ETC: 11:27 (1:56:59 remaining)
+SYN Stealth Scan Timing: About 13.39% done; ETC: 11:35 (2:03:55 remaining)
+SYN Stealth Scan Timing: About 13.41% done; ETC: 11:43 (2:11:10 remaining)
+SYN Stealth Scan Timing: About 13.43% done; ETC: 11:53 (2:19:02 remaining)
+SYN Stealth Scan Timing: About 13.45% done; ETC: 12:02 (2:27:11 remaining)
+SYN Stealth Scan Timing: About 13.47% done; ETC: 12:12 (2:35:55 remaining)
+SYN Stealth Scan Timing: About 13.49% done; ETC: 12:23 (2:44:56 remaining)
+SYN Stealth Scan Timing: About 13.51% done; ETC: 12:34 (2:54:34 remaining)
+SYN Stealth Scan Timing: About 13.53% done; ETC: 12:46 (3:04:44 remaining)
+SYN Stealth Scan Timing: About 13.56% done; ETC: 12:58 (3:15:29 remaining)
+SYN Stealth Scan Timing: About 13.58% done; ETC: 13:11 (3:26:51 remaining)
+SYN Stealth Scan Timing: About 13.61% done; ETC: 13:26 (3:39:04 remaining)
+SYN Stealth Scan Timing: About 13.64% done; ETC: 13:40 (3:51:50 remaining)
+SYN Stealth Scan Timing: About 13.67% done; ETC: 13:56 (4:05:26 remaining)
+SYN Stealth Scan Timing: About 13.71% done; ETC: 14:13 (4:19:50 remaining)
+SYN Stealth Scan Timing: About 13.74% done; ETC: 14:31 (4:35:03 remaining)
+SYN Stealth Scan Timing: About 13.78% done; ETC: 14:49 (4:51:01 remaining)
+SYN Stealth Scan Timing: About 13.82% done; ETC: 15:09 (5:08:06 remaining)
+SYN Stealth Scan Timing: About 13.87% done; ETC: 15:31 (5:26:15 remaining)
+SYN Stealth Scan Timing: About 13.91% done; ETC: 15:53 (5:45:23 remaining)
+SYN Stealth Scan Timing: About 13.96% done; ETC: 16:17 (6:05:31 remaining)
+SYN Stealth Scan Timing: About 14.02% done; ETC: 16:42 (6:26:52 remaining)
+SYN Stealth Scan Timing: About 14.08% done; ETC: 17:09 (6:49:29 remaining)
+SYN Stealth Scan Timing: About 14.14% done; ETC: 17:37 (7:13:31 remaining)
+SYN Stealth Scan Timing: About 14.17% done; ETC: 18:07 (7:38:59 remaining)
+SYN Stealth Scan Timing: About 14.21% done; ETC: 18:38 (8:05:45 remaining)
+SYN Stealth Scan Timing: About 14.25% done; ETC: 19:12 (8:34:17 remaining)
+SYN Stealth Scan Timing: About 14.33% done; ETC: 19:47 (9:04:29 remaining)
+SYN Stealth Scan Timing: About 14.39% done; ETC: 20:25 (9:36:20 remaining)
+SYN Stealth Scan Timing: About 14.43% done; ETC: 21:05 (10:10:04 remaining)
+SYN Stealth Scan Timing: About 14.48% done; ETC: 21:47 (10:45:51 remaining)
+SYN Stealth Scan Timing: About 14.53% done; ETC: 22:32 (11:23:42 remaining)
+SYN Stealth Scan Timing: About 14.59% done; ETC: 23:20 (12:03:58 remaining)

@@ -1,0 +1,12 @@
+Exercice avec valise du prof : 
+
+Nmap scan report for 10.1.1.1
+Host is up (0.042s latency).
+Not shown: 65530 filtered tcp ports (no-response)
+PORT    STATE  SERVICE
+22/tcp  open   ssh
+80/tcp  open   http
+113/tcp closed ident
+161/tcp closed snmp
+443/tcp open   https
+
