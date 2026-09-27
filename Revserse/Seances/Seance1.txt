@@ -1,0 +1,111 @@
+Prérequi du cours: 
+
+C,C++ Linux CLI
+
+Outils : gdb, binutils, ghidra
+
+Plan du cours: 
+
+1) Les cas d'usages
+2) Comprendre le cadre légal en france
+3) Revois les architectures etc ... 
+
+Les cas d'usage éthiques : 
+
+Sécurité défensive, analyse d'incidents soc...
+Validation Logicielle
+CTF pour s'amuser
+R&D : Interopérabilitée
+Interdit : Pour contourner les licenses (usage non autorisé)
+
+Le cadre Légal en France : 
+
+CPI L122-6-1 : exceptions
+RGPD : prudence des données
+L335-3 : contrefaçon si hors exceptions
+Traçabilitée (hash, notes etc ...)
+
+
+----------
+
+
+1) RAPPELS D'ARCHITECTURE : 
+
+Registres : x86, x64 etc ...
+Pile: croissance vers adresses basses, RSP/RBP
+Appels: conventions SysV AMD64 vs Windows
+
+Compilation et assemblage : 
+
+Y a plusieurs etapes : 
+
+Source code (.c, .cpp, .h)
+        | 
+Preprocessing   preprocessor (cpp)
+        |
+Include Header, Expand Macro (.i, .ii)
+        | 
+Compilation     Compilateur (gcc, g++)
+        |
+Code Assembleur (.s)
+        |
+Assemble        Assembler (as)
+        |
+Machine Code (.o, .obj)
+        |
+...
+
+Nous on veut intercepter le code Assembleur
+
+Exemple d'un petit fichier de 1000octets, le fichier commence a l'adrese par exemple : ox400000
+Y a 3 sections interessantes : Les global variables qui sont au debut du fichier
+Ensuite on a la HEAP, ou il y a les variables qui bougent (malloc)
+Puis il y a la pile (stack) qui est la pile d'execution (vraiment ça execute et supprime ce qu'il y a au top de la pile.
+
+Plusieurs segments mémoire : 
+.data   (instructions a éxécuter)
+.text
+.bss
+Tas
+Pile
+
+
+Slides sur le discord.
+
+Il y a des registres qui changent de nom entre les architectures (32 et 64 bits)
+
+Instructions assembleur les plus importantes : 
+MOV rbp, rsp : Copie la valeur de RSP dans RBP
+jmp RIP+4 : Execute l'instructions a l'adresse RIP+4 octets
+call ox0806ad5b : Appelle une fonctions située a l'adresse précisée
+cmp RAX, RBX : Compare les valeurs des registres
+jne RIP+22 : Si les valeurs comparées sont différentes sauter l'instruction RIP+22
+voir aussi je, jgt, jit, jge, jle, etc...
+
+Prologues et épilogues : 
+
+Prologue : 
+
+Push rbp : Sauvegarde l'ancien pointeur de base dans la pile
+RBP c'es base pointer (la base de la pile) RIP c'est l'instruction en cours et RSP c'est la top de la pile
+Donc en gros ça empile l'instruction actuelle pour passer a autre chose
+puis
+mov rbp, rsp : rbp pointe maintenant sur le debut de la pile de la fonction
+du coup résumé des actions : on push pour sauvegarder le pointeur dans la pile, puis on fait un mov de ce pointeur sur le top de la pile et du coup le pointeur de rbp est plus au beau milieu du code mais au top de la pile et après ça continue les instructions de la pile
+
+
+épilogue : 
+
+mov rsp, rbp : on restaure la pile
+pop rbp : on récupère l'ancien pointeur de base
+ret
+Du coup on a le debut de la pile qui pointe vers rbp
+
+
+Pile 
+Les premiers arguments sont stockés dans les registres suivants : 
+rdi, rsi, rdx, rcx, r8, r9
+
+
+
+
