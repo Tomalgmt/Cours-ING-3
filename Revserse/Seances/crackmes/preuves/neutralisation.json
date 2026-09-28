@@ -1,0 +1,10 @@
+{
+  "original_sha256": "8f0bdcaabfe1089e0ea169eefeb1795bc6ea7762fff2aab0aabc60c8804dd6e2",
+  "neutralized_sha256": "70175ce93ed3868708f977a6b7d7e71a35c0aada00082cc66b3be2aced4c893a",
+  "size": 1121480,
+  "offset": "0x93ba",
+  "before": "4831ed4889e7488d35",
+  "after": "31ffb83c0000000f05",
+  "verified_readback": true,
+  "output": "outputs\\mal-neutralise.7z"
+}

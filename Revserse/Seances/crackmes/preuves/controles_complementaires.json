@@ -1,0 +1,115 @@
+{
+  "dynamic_tags": [
+    {
+      "d_tag": "DT_SYMBOLIC",
+      "d_val": 0,
+      "d_ptr": 0
+    },
+    {
+      "d_tag": "DT_INIT",
+      "d_val": 31512,
+      "d_ptr": 31512
+    },
+    {
+      "d_tag": "DT_FINI",
+      "d_val": 715378,
+      "d_ptr": 715378
+    },
+    {
+      "d_tag": "DT_HASH",
+      "d_val": 400,
+      "d_ptr": 400
+    },
+    {
+      "d_tag": "DT_STRTAB",
+      "d_val": 648,
+      "d_ptr": 648
+    },
+    {
+      "d_tag": "DT_SYMTAB",
+      "d_val": 456,
+      "d_ptr": 456
+    },
+    {
+      "d_tag": "DT_STRSZ",
+      "d_val": 96,
+      "d_ptr": 96
+    },
+    {
+      "d_tag": "DT_SYMENT",
+      "d_val": 24,
+      "d_ptr": 24
+    },
+    {
+      "d_tag": "DT_DEBUG",
+      "d_val": 0,
+      "d_ptr": 0
+    },
+    {
+      "d_tag": "DT_PLTGOT",
+      "d_val": 3026944,
+      "d_ptr": 3026944
+    },
+    {
+      "d_tag": "DT_RELA",
+      "d_val": 744,
+      "d_ptr": 744
+    },
+    {
+      "d_tag": "DT_RELASZ",
+      "d_val": 30768,
+      "d_ptr": 30768
+    },
+    {
+      "d_tag": "DT_RELAENT",
+      "d_val": 24,
+      "d_ptr": 24
+    },
+    {
+      "d_tag": "DT_FLAGS_1",
+      "d_val": 134217728,
+      "d_ptr": 134217728
+    },
+    {
+      "d_tag": "DT_RELACOUNT",
+      "d_val": 1282,
+      "d_ptr": 1282
+    },
+    {
+      "d_tag": "DT_NULL",
+      "d_val": 0,
+      "d_ptr": 0
+    }
+  ],
+  "password_object_xrefs": [
+    {
+      "address": "0x929d5",
+      "instruction": "lea rsi, [rip + 0x25d864]",
+      "function": "getpass"
+    },
+    {
+      "address": "0x929f0",
+      "instruction": "lea rax, [rip + 0x25d849]",
+      "function": "getpass"
+    },
+    {
+      "address": "0x92a46",
+      "instruction": "lea rax, [rip + 0x25d7f3]",
+      "function": "getpass"
+    }
+  ],
+  "patch_changed_offsets": [
+    "0x93ba",
+    "0x93bb",
+    "0x93bc",
+    "0x93bd",
+    "0x93be",
+    "0x93bf",
+    "0x93c0",
+    "0x93c1",
+    "0x93c2"
+  ],
+  "corrupt_source_rejected": true,
+  "patched_size": 1121480,
+  "patched_hash": "70175ce93ed3868708f977a6b7d7e71a35c0aada00082cc66b3be2aced4c893a"
+}
