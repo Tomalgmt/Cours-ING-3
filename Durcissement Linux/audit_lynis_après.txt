@@ -12,7 +12,7 @@
 
 [+] Initializing program
 ------------------------------------
-/usr/sbin/lynis: 449: [: /home/moutsss/Cours-ING-3/Durcissement: unexpected operator
+/usr/sbin/lynis: 449: [: /home/etudiant/Cours-ING-3/Durcissement: unexpected operator
   - Detecting OS...                                           [ DONE ]
   - Checking profiles...                                      [ DONE ]
 

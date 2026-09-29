@@ -5,7 +5,7 @@ A. SERVICE METIER et audit
 
 Après avoir lancé le script de dégradation et de setup on a bien :
 
-moutsss@Durcissement:~/tp$ curl http://127.0.0.1:8080/health
+etudiant@Durcissement:~/tp$ curl http://127.0.0.1:8080/health
 OK
 
 On peut aussi voir le status de nginx avec : 
@@ -34,7 +34,7 @@ B. COMPTES ET AUTHENTIFICATION
 On regarde les comptes qui existent sur la machine avec cat /etc/passwd et on voit que beaucoup de compte avec un uid superieur a 1000 sont présents
 On voit des comptes "humains" avec un shell interactif : 
 
-moutsss         UID=1000   shell=/bin/bash
+etudiant         UID=1000   shell=/bin/bash
 alice           UID=1001   shell=/bin/bash
 bob             UID=1002   shell=/bin/bash
 stagiaire       UID=1003   shell=/bin/bash
@@ -47,7 +47,7 @@ Le stagiaire n'est surement plus la (après demande auprès de vous) je supprime
 
 On veut maintenant mettre en place une politique d'expiration des mots de passes. On peut voir avec sudo passwd -S "user" que les mots de passes n'expirent pas. 
 Par exemple : 
-moutsss@Durcissement:~/Cours-ING-3/Durcissement Linux$ sudo passwd -S alice
+etudiant@Durcissement:~/Cours-ING-3/Durcissement Linux$ sudo passwd -S alice
 alice P 2026-09-08 0 99999 7 -1
 
 ce qui veut dire que le mot de passe n'expire pas.
@@ -146,14 +146,14 @@ PasswordAuthentication no       # desactiver l'authentification par mot de passe
 MaxAuthTries 4                  # nombre maximum d'authentifications
 LoginGraceTime 60               # timeout avant fail du login
 X11Forwarding no                # desactiver le forwarding X11
-AllowUsers moutsss alice bob    # autoriser seulement l'utilisateur moutsss alice et bob à se connecter via ssh
+AllowUsers etudiant alice bob    # autoriser seulement l'utilisateur etudiant alice et bob à se connecter via ssh
 ClientAliveInterval 600         # envoyer un paquet toutes les 10 minutes pour garder la connexion active
 AllowTcpForwarding no           # desactiver le forwarding TCP ce qui empeche de forwarder des ports via ssh
 
 ATTENTION, après l'ajout de PasswordAuthentication on ne peut plus se connecter en ssh avec un mot de passe, il faut donc avoir une clé publique de l'hote présente
 dans le fichier ~/.ssh/authorized_keys de l'utilisateur pour pouvoir se connecter en ssh.
 Je peux ensuite me connecter avec la commande : 
-ssh -p 2222 moutsss@127.0.0.1
+ssh -p 2222 etudiant@127.0.0.1
 
 Pour la bannière on modifie le fichier : sudo vim /etc/issue.net
 Par le message que l'on veut mettre dans mon cas j'ai mis "Accès réservé aux utilisateurs autorisés."
@@ -248,7 +248,7 @@ ls -l /etc/shadow /srv/metier /opt/scripts /usr/local/bin/find-suid
 
 On a : 
 
-moutsss@Durcissement:~/tp$ ls -l /etc/shadow /usr/local/bin/find-suid
+etudiant@Durcissement:~/tp$ ls -l /etc/shadow /usr/local/bin/find-suid
 ls -ld /srv/metier /opt/scripts /usr/local/bin/find-suid
 
 -rw-rw-r-- 1 root shadow   1546 Sep  9 00:00 /etc/shadow
@@ -294,9 +294,9 @@ sudo chmod 700 /root/prison/find-suid.disabled
 
 Après ça on a toujours accès a l'application donc : 
 
-moutsss@Durcissement:~/tp$ curl http://127.0.0.1:8080/health
+etudiant@Durcissement:~/tp$ curl http://127.0.0.1:8080/health
 OK
-moutsss@Durcissement:~/tp$ sudo rm /root/prison/find-suid.disabled
+etudiant@Durcissement:~/tp$ sudo rm /root/prison/find-suid.disabled
 
 
 H. NOYAU (sysctl)

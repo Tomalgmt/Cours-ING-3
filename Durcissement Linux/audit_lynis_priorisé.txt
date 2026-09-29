@@ -4,7 +4,7 @@ Machine : Durcissement — Debian 12
 Document de travail sur l'hôte Windows.
 État complémentaire vérifié dans la VM le 08/09/2026 vers 15:21–15:24, heure de Paris.
 Base : audit Lynis initial, audit priorisé précédent et contrôles ciblés en lecture seule.
-Script de référence : /home/moutsss/tp/check-debian.sh
+Script de référence : /home/etudiant/tp/check-debian.sh
 SHA-256 : 2e67108fecfe3b7463a78622380178767f4b810cb85f66b578ce9f1b1abc9554
 
 OBJECTIF ET LECTURE
@@ -41,7 +41,7 @@ redémarrage est volontairement placée à la toute fin de ce document.
 Criticité : Élevée
 
 Constatation factuelle :
-La connexion autorisée de moutsss réussit avec le secret de quatre chiffres fourni, non reproduit. Aucun appel actif à pam_pwquality ou pam_cracklib n'a été trouvé dans /etc/pam.d. Le compte dispose de sudo complet.
+La connexion autorisée de etudiant réussit avec le secret de quatre chiffres fourni, non reproduit. Aucun appel actif à pam_pwquality ou pam_cracklib n'a été trouvé dans /etc/pam.d. Le compte dispose de sudo complet.
 
 Menace associée :
 Devinette du secret puis prise du compte et élévation administrative.
@@ -274,7 +274,7 @@ Nginx est actif, activé au démarrage et écoute sur 8080. Sa réponse HTTP mé
 Criticité : Élevée
 
 Constatation factuelle :
-Mode 0666, propriétaire root:shadow. Les tests -r et -w, exécutés sous moutsss sans sudo, confirment la lecture et l'écriture possibles. Aucun contenu ni aucune empreinte de mot de passe n'a été extrait.
+Mode 0666, propriétaire root:shadow. Les tests -r et -w, exécutés sous etudiant sans sudo, confirment la lecture et l'écriture possibles. Aucun contenu ni aucune empreinte de mot de passe n'a été extrait.
 
 Menace associée :
 Lecture des empreintes pour attaque hors ligne ; altération de données d'authentification et prise de contrôle potentielle.
@@ -505,11 +505,11 @@ Si SSH a été modifié, valider l'accès par clé avant de compter uniquement d
 Attendre le retour de la VM, puis rouvrir la console ou la session SSH depuis
 PowerShell Windows :
 
-    ssh -p 2222 moutsss@127.0.0.1
+    ssh -p 2222 etudiant@127.0.0.1
 
 2) Préparer un dossier de résultats distinct de l'audit initial
 
-    cd "/home/moutsss/Cours-ING-3/Durcissement Linux"
+    cd "/home/etudiant/Cours-ING-3/Durcissement Linux"
     verification_dir="verification_finale_$(date +%Y%m%d-%H%M%S)"
     mkdir -- "$verification_dir"
     set -o pipefail
@@ -531,7 +531,7 @@ indisponibilité avant de conclure sur la note.
 
 4) Relancer le script de notation
 
-    sudo bash /home/moutsss/tp/check-debian.sh 2>&1 | tee "$verification_dir/check_debian_final.txt"
+    sudo bash /home/etudiant/tp/check-debian.sh 2>&1 | tee "$verification_dir/check_debian_final.txt"
 
 Lire les lignes PASS/FAIL et le total affiché, pas seulement le code de retour.
 Cette version compte 58 contrôles et calcule le score technique sur 60 ;

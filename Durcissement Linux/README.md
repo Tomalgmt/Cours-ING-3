@@ -1,5 +1,7 @@
 # TP1 — Durcissement d’une machine Debian 12
 
+> Les noms de compte et les chemins personnels sont anonymisés avec `etudiant`. Dans les commandes, remplacez ce nom par celui de votre compte local. Le script utilise le compte qui lance `sudo`, ou celui indiqué par `HARDENING_ADMIN_USER`.
+
 Dans ce rapport, je présente l’audit et le durcissement que j’ai réalisés sur une VM Debian 12, tout en maintenant le service métier nginx disponible sur le port TCP 8080. Je regroupe les mesures selon les thèmes du script `check-debian.sh`.
 
 ## Sommaire
@@ -28,7 +30,7 @@ sudo chmod +x hardening.sh
 sudo ./hardening.sh
 ```
 
-ATTENTION ça ne va peut etre pas fonctionner du premier coup et parfois faire des erreures d'accès a des adresses mémoire, mais il faut persister, suivre les indications et relancer la VM manuellement si besoin. Le mot de passe du compte Moutsss au debut est 2003.
+ATTENTION ça ne va peut etre pas fonctionner du premier coup et parfois faire des erreures d'accès a des adresses mémoire, mais il faut persister, suivre les indications et relancer la VM manuellement si besoin. Le mot de passe du compte etudiant au debut est 2003.
 
 Preparez aussi une clé ssh à pouvoir coller dans la VM pour pouvoir s'y connecter depuis l'hôte. Le script va vous demander de coller la clé publique ainsi que d'autres instructions.
 
@@ -43,7 +45,7 @@ sudo systemctl enable --now ssh
 Je peux ensuite me connecter depuis l’hôte avec :
 
 ```bash
-ssh -p 2222 moutsss@127.0.0.1
+ssh -p 2222 etudiant@127.0.0.1
 ```
 
 ### Synchronisation de l’horloge
@@ -108,7 +110,7 @@ getent passwd
 J’ai initialement observé les comptes interactifs suivants :
 
 ```text
-moutsss      UID=1000  shell=/bin/bash
+etudiant      UID=1000  shell=/bin/bash
 alice        UID=1001  shell=/bin/bash
 bob          UID=1002  shell=/bin/bash
 stagiaire    UID=1003  shell=/bin/bash
@@ -157,7 +159,7 @@ La directive `PASS_MAX_DAYS 90` impose le changement du mot de passe au plus tar
 ```bash
 sudo chage -M 90 -m 1 -W 14 alice
 sudo chage -M 90 -m 1 -W 14 bob
-sudo chage -M 90 -m 1 -W 14 moutsss
+sudo chage -M 90 -m 1 -W 14 etudiant
 ```
 
 ### Qualité des mots de passe
@@ -253,7 +255,7 @@ PubkeyAuthentication yes
 MaxAuthTries 4
 LoginGraceTime 60
 X11Forwarding no
-AllowUsers moutsss alice bob
+AllowUsers etudiant alice bob
 Banner /etc/issue.net
 ClientAliveInterval 600
 AllowTcpForwarding no
@@ -261,7 +263,7 @@ AllowTcpForwarding no
 
 Ces options interdisent la connexion directe sur le compte `root`, désactivent l’authentification par mot de passe, imposent les clés publiques, limitent les essais et les comptes autorisés, et désactivent les transferts X11 et TCP. `ClientAliveInterval 600` permet également au serveur de vérifier périodiquement que le client répond toujours.
 
-Avant de désactiver le mot de passe, j’ai créé une clé ssh sur l'hote et placé la clé publique dans `~moutsss/.ssh/authorized_keys` comme ça je ne perd pas l'accès à la VM. J’ai ensuite sécurisé les permissions du répertoire et du fichier :
+Avant de désactiver le mot de passe, j’ai créé une clé ssh sur l'hote et placé la clé publique dans `~etudiant/.ssh/authorized_keys` comme ça je ne perd pas l'accès à la VM. J’ai ensuite sécurisé les permissions du répertoire et du fichier :
 
 ```bash
 chmod 700 ~/.ssh
@@ -278,7 +280,7 @@ sudo systemctl reload ssh
 Depuis l’hôte, la redirection NAT VirtualBox utilise :
 
 ```bash
-ssh -p 2222 moutsss@127.0.0.1
+ssh -p 2222 etudiant@127.0.0.1
 ```
 
 La bannière `/etc/issue.net` contient :

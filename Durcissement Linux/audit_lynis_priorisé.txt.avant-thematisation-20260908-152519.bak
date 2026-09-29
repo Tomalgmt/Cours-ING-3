@@ -41,7 +41,7 @@ Criticité : Élevée
 Référence de l'audit : AUTH-9262 ; SSH-7408 ; complément de connexion
 
 Constatation factuelle :
-La connexion autorisée de moutsss a réussi avec un secret de quatre chiffres, non reproduit ici. Ce compte possède des droits sudo complets. Les vérifications initiales indiquent PasswordAuthentication yes, MaxAuthTries 10 et LoginGraceTime 300 ; Lynis ne trouve pas de module dédié de qualité des mots de passe. L'absence de pam_faillock/pam_tally2 n'a pas été vérifiée : elle ne constitue pas un défaut confirmé dans cette fiche.
+La connexion autorisée de etudiant a réussi avec un secret de quatre chiffres, non reproduit ici. Ce compte possède des droits sudo complets. Les vérifications initiales indiquent PasswordAuthentication yes, MaxAuthTries 10 et LoginGraceTime 300 ; Lynis ne trouve pas de module dédié de qualité des mots de passe. L'absence de pam_faillock/pam_tally2 n'a pas été vérifiée : elle ne constitue pas un défaut confirmé dans cette fiche.
 
 Menace associée :
 Devinette du mot de passe, prise du compte puis élévation root avec le même secret.

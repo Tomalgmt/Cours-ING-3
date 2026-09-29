@@ -35,9 +35,12 @@ date -R
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 CONFIG_DIR="$SCRIPT_DIR/configs/etc"
-ADMIN_USER="${HARDENING_ADMIN_USER:-${SUDO_USER:-moutsss}}"
-if [ "$ADMIN_USER" = root ]; then
-    ADMIN_USER=moutsss
+# Utiliser le compte choisi explicitement ou celui qui lance sudo.
+ADMIN_USER="${HARDENING_ADMIN_USER:-${SUDO_USER:-}}"
+if [ -z "$ADMIN_USER" ] || [ "$ADMIN_USER" = root ]; then
+    echo "[ERREUR] Lancez le script avec sudo depuis votre compte administrateur."
+    echo "Ou renseignez HARDENING_ADMIN_USER avec le nom du compte a utiliser."
+    exit 1
 fi
 
 if [ ! -d "$CONFIG_DIR" ]; then
@@ -159,7 +162,7 @@ awk '$1 == "PASS_MAX_DAYS" { nombre++; valeur=$2 }
      END { exit !(nombre == 1 && valeur <= 90) }' /etc/login.defs
 
 # Application aux comptes deja existants.
-for user in moutsss alice bob; do
+for user in "$ADMIN_USER" alice bob; do
     if id "$user" >/dev/null 2>&1; then
         chage -M 90 -m 1 -W 14 "$user"
     fi
@@ -200,7 +203,7 @@ rm -f /tmp/common-auth.hardening
 sed -i '/pam_faillock\.so/d' /etc/pam.d/common-account
 printf '%s\n' 'account required pam_faillock.so' >> /etc/pam.d/common-account
 
-for user in moutsss alice bob; do
+for user in "$ADMIN_USER" alice bob; do
     id "$user" >/dev/null 2>&1 && faillock --user "$user" --reset 2>/dev/null || true
 done
 
