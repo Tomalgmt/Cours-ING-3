@@ -1,0 +1,30 @@
+{
+  "excluded_roots": ["node_modules", "vendor", "dist", "build", "__pycache__"],
+  "subjects": {
+    "Durcissement Linux": {
+      "title": "Durcissement Linux",
+      "description": "Debian, audits, confinement et automatisation du durcissement.",
+      "entry": "README.md"
+    },
+    "Durcissement Windows": {
+      "title": "Durcissement Windows",
+      "description": "Sécurité du système, identités et mécanismes de protection.",
+      "entry": "TP2.md"
+    },
+    "Revserse": {
+      "title": "Reverse engineering",
+      "description": "Analyse de binaires, désassemblage, débogage et comptes rendus.",
+      "entry": "Reverse engineering.pdf"
+    },
+    "SCADA": {
+      "title": "SCADA",
+      "description": "Systèmes industriels, réseaux et notes de séances.",
+      "entry": "Seance1"
+    },
+    "Sécurité Cloud": {
+      "title": "Sécurité Cloud",
+      "description": "IAM, analyse de politiques et travaux pratiques cloud.",
+      "entry": "rendu1.md"
+    }
+  }
+}

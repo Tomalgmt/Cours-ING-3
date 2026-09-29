@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="364" viewBox="0 0 1200 364" role="img" aria-labelledby="title desc">
+<title id="title">Cours ING 3</title><desc id="desc">Troisième année d’ingénieur. Apprendre, expérimenter, documenter. Un carnet de cours, exercices et laboratoires en évolution.</desc>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b31"/><stop offset="1" stop-color="#111326"/></linearGradient>
+<linearGradient id="accent"><stop stop-color="#65e3da"/><stop offset="1" stop-color="#ab9bff"/></linearGradient></defs>
+<g font-family="Segoe UI, Inter, Arial, sans-serif">
+<rect x="0" y="0" width="1200" height="364" rx="26" fill="url(#bg)" />
+<rect x="44" y="38" width="276" height="30" rx="15" fill="#1e3548" />
+<text x="61" y="59" font-size="13" fill="#83eee4" letter-spacing="1.2">CARNET D’INGÉNIEUR  /  VOL. 03</text>
+<text x="44" y="135" font-size="57" fill="#edf3ff" font-weight="750">Apprendre.</text>
+<text x="44" y="200" font-size="57" fill="#edf3ff" font-weight="750">Expérimenter.</text>
+<text x="44" y="265" font-size="57" fill="#65e3da" font-weight="750">Documenter.</text>
+<text x="47" y="322" font-size="15" fill="#a6b7d1" letter-spacing="2">COURS   /   EXERCICES   /   LABORATOIRES</text>
+<circle cx="976" cy="180" r="142" fill="none" stroke="#2b3550"/>
+<circle cx="976" cy="180" r="112" fill="none" stroke="#26344c" stroke-dasharray="4 12"/>
+<path d="M735 94H837L870 127H1110M743 259H820L860 219H1137" fill="none" stroke="#405878" stroke-width="2"/>
+<text x="886" y="233" font-size="160" fill="#263550" font-weight="800">03</text>
+<rect x="706" y="65" width="195" height="62" rx="12" fill="#152039" stroke="#354565"/>
+<text x="726" y="104" font-size="21" fill="#65e3da" font-family="Consolas, monospace">~/cours</text>
+<rect x="790" y="148" width="322" height="62" rx="12" fill="#152039" stroke="#354565"/>
+<text x="810" y="187" font-size="21" fill="#ab9bff" font-family="Consolas, monospace">./travaux-pratiques</text>
+<rect x="733" y="239" width="332" height="62" rx="12" fill="#152039" stroke="#354565"/>
+<text x="753" y="278" font-size="21" fill="#ffca80" font-family="Consolas, monospace">git add connaissances</text>
+</g></svg>
