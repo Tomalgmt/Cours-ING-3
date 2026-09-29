@@ -21,7 +21,7 @@
 
 <a href=".github/assets/dashboard.svg"><img src=".github/assets/dashboard.svg" alt="Statistiques du dépôt : matières, fichiers, PDF, volume et répartition. Cliquer pour agrandir ; détails dans le tableau ci-dessous." width="100%"></a>
 
-**5 matières** · **148 fichiers** · **72,3 Mo versionnés**
+**6 matières** · **147 fichiers** · **70,5 Mo versionnés**
 
 Les barres montrent le volume de fichiers, pas l’avancement des cours. Les archives et données de laboratoire comptent aussi.
 
@@ -33,10 +33,11 @@ Chaque matière a son espace. Le lien **Ouvrir** mène au document d’entrée l
 | :-- | --: | --: | --: | --: | --: | :-- |
 | **[Durcissement Linux](./Durcissement%20Linux/)**<br><sub>Debian, audits, confinement et automatisation du durcissement.</sub> | 8 | 3 | 26 | 1 | 3,5 Mo | [Ouvrir ↗](./Durcissement%20Linux/README.md) |
 | **[Durcissement Windows](./Durcissement%20Windows/)**<br><sub>Sécurité du système, identités et mécanismes de protection.</sub> | 1 | 1 | 0 | 0 | 741,0 Ko | [Ouvrir ↗](./Durcissement%20Windows/TP2.md) |
-| **[Reverse engineering](./Revserse/)**<br><sub>Analyse de binaires, désassemblage, débogage et comptes rendus.</sub> | 4 | 4 | 8 | 79 | 67,4 Mo | [Ouvrir ↗](./Revserse/Reverse%20engineering.pdf) |
+| **[Reverse engineering](./Revserse/)**<br><sub>Analyse de binaires, désassemblage, débogage et comptes rendus.</sub> | 4 | 4 | 8 | 76 | 64,0 Mo | [Ouvrir ↗](./Revserse/Reverse%20engineering.pdf) |
 | **[SCADA](./SCADA/)**<br><sub>Systèmes industriels, réseaux et notes de séances.</sub> | 3 | 0 | 0 | 0 | 16,3 Ko | [Ouvrir ↗](./SCADA/Seance1) |
+| **[Secu\_shell](./Secu_shell/)**<br><sub>Notes, exercices et ressources de la matière.</sub> | 0 | 1 | 0 | 1 | 1,6 Mo | [Ouvrir ↗](./Secu_shell/) |
 | **[Sécurité Cloud](./S%C3%A9curit%C3%A9%20Cloud/)**<br><sub>IAM, analyse de politiques et travaux pratiques cloud.</sub> | 4 | 3 | 3 | 0 | 681,6 Ko | [Ouvrir ↗](./S%C3%A9curit%C3%A9%20Cloud/rendu1.md) |
-| **Total** | **20** | **11** | **37** | **80** | **72,3 Mo** | |
+| **Total** | **20** | **12** | **37** | **78** | **70,5 Mo** | |
 
 <sub>Notes : Markdown, texte et formats similaires. Supports : PDF, documents et présentations. Code & config : scripts, sources et paramètres. Autres : archives, binaires, images et fichiers de projet.</sub>
 
