@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="688" viewBox="0 0 1200 688" role="img" aria-labelledby="title desc">
-<title id="title">Tableau de bord des cours</title><desc id="desc">4 indicateurs : 6 matières, 167 fichiers, 10 PDF, 70,6 Mo. Durcissement Linux : 38 fichiers; Durcissement Windows : 2 fichiers; Reverse engineering : 92 fichiers; SCADA : 3 fichiers; Secu_shell : 22 fichiers; Sécurité Cloud : 10 fichiers</desc>
+<title id="title">Tableau de bord des cours</title><desc id="desc">4 indicateurs : 6 matières, 170 fichiers, 10 PDF, 70,6 Mo. Durcissement Linux : 38 fichiers; Durcissement Windows : 2 fichiers; Reverse engineering : 92 fichiers; SCADA : 3 fichiers; Secu_shell : 25 fichiers; Sécurité Cloud : 10 fichiers</desc>
 <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101b31"/><stop offset="1" stop-color="#111326"/></linearGradient>
 <linearGradient id="accent"><stop stop-color="#65e3da"/><stop offset="1" stop-color="#ab9bff"/></linearGradient></defs>
 <g font-family="Segoe UI, Inter, Arial, sans-serif">
@@ -13,7 +13,7 @@
 <text x="60" y="198" font-size="12" fill="#a6b7d1" >détectées automatiquement</text>
 <rect x="326" y="75" width="262" height="139" rx="16" fill="#17243c" stroke="#2d3d57"/>
 <rect x="346" y="95" width="24" height="3" rx="1" fill="#ab9bff" />
-<text x="346" y="147" font-size="40" fill="#edf3ff" font-weight="700">167</text>
+<text x="346" y="147" font-size="40" fill="#edf3ff" font-weight="700">170</text>
 <text x="346" y="176" font-size="12" fill="#ab9bff" letter-spacing="1.8">FICHIERS</text>
 <text x="346" y="198" font-size="12" fill="#a6b7d1" >suivis par Git</text>
 <rect x="612" y="75" width="262" height="139" rx="16" fill="#17243c" stroke="#2d3d57"/>
@@ -46,12 +46,12 @@
 <rect x="135.29" y="408" width="173.24" height="9" rx="0" fill="#ffca80" />
 <rect x="308.53" y="408" width="6.66" height="9" rx="0" fill="#8a9dbb" />
 <text x="62" y="454" font-size="16" fill="#edf3ff" >Secu_shell</text>
-<text x="675" y="454" font-size="16" fill="#b7c7df" text-anchor="end">22</text>
+<text x="675" y="454" font-size="16" fill="#b7c7df" text-anchor="end">25</text>
 <rect x="62" y="465" width="613" height="9" rx="4" fill="#29354e" />
-<rect x="62.0" y="465" width="6.66" height="9" rx="0" fill="#65e3da" />
-<rect x="68.66" y="465" width="6.66" height="9" rx="0" fill="#ab9bff" />
-<rect x="75.33" y="465" width="39.98" height="9" rx="0" fill="#ffca80" />
-<rect x="115.3" y="465" width="93.28" height="9" rx="0" fill="#8a9dbb" />
+<rect x="62.0" y="465" width="19.99" height="9" rx="0" fill="#65e3da" />
+<rect x="81.99" y="465" width="6.66" height="9" rx="0" fill="#ab9bff" />
+<rect x="88.65" y="465" width="39.98" height="9" rx="0" fill="#ffca80" />
+<rect x="128.63" y="465" width="99.95" height="9" rx="0" fill="#8a9dbb" />
 <text x="62" y="511" font-size="16" fill="#edf3ff" >Sécurité Cloud</text>
 <text x="675" y="511" font-size="16" fill="#b7c7df" text-anchor="end">10</text>
 <rect x="62" y="522" width="613" height="9" rx="4" fill="#29354e" />
@@ -68,23 +68,23 @@
 <rect x="62.0" y="636" width="6.66" height="9" rx="0" fill="#65e3da" />
 <rect x="68.66" y="636" width="6.66" height="9" rx="0" fill="#ab9bff" />
 <circle cx="941" cy="383" r="68" fill="none" stroke="#29354e" stroke-width="20"/>
-<circle cx="941" cy="383" r="68" fill="none" stroke="#65e3da" stroke-width="20" stroke-dasharray="53.7269 373.5297" stroke-dashoffset="-0.0000" transform="rotate(-90 941 383)"/>
-<circle cx="941" cy="383" r="68" fill="none" stroke="#ab9bff" stroke-width="20" stroke-dasharray="30.7011 396.5555" stroke-dashoffset="-53.7269" transform="rotate(-90 941 383)"/>
-<circle cx="941" cy="383" r="68" fill="none" stroke="#ffca80" stroke-width="20" stroke-dasharray="110.0122 317.2444" stroke-dashoffset="-84.4280" transform="rotate(-90 941 383)"/>
-<circle cx="941" cy="383" r="68" fill="none" stroke="#8a9dbb" stroke-width="20" stroke-dasharray="232.8165 194.4401" stroke-dashoffset="-194.4401" transform="rotate(-90 941 383)"/>
-<text x="941" y="387" font-size="35" fill="#edf3ff" text-anchor="middle" font-weight="700">167</text>
+<circle cx="941" cy="383" r="68" fill="none" stroke="#65e3da" stroke-width="20" stroke-dasharray="57.8053 369.4513" stroke-dashoffset="-0.0000" transform="rotate(-90 941 383)"/>
+<circle cx="941" cy="383" r="68" fill="none" stroke="#ab9bff" stroke-width="20" stroke-dasharray="30.1593 397.0973" stroke-dashoffset="-57.8053" transform="rotate(-90 941 383)"/>
+<circle cx="941" cy="383" r="68" fill="none" stroke="#ffca80" stroke-width="20" stroke-dasharray="108.0708 319.1858" stroke-dashoffset="-87.9646" transform="rotate(-90 941 383)"/>
+<circle cx="941" cy="383" r="68" fill="none" stroke="#8a9dbb" stroke-width="20" stroke-dasharray="231.2212 196.0354" stroke-dashoffset="-196.0354" transform="rotate(-90 941 383)"/>
+<text x="941" y="387" font-size="35" fill="#edf3ff" text-anchor="middle" font-weight="700">170</text>
 <text x="941" y="412" font-size="14" fill="#a6b7d1" text-anchor="middle">fichiers</text>
 <rect x="748" y="479" width="10" height="10" rx="3" fill="#65e3da" />
 <text x="770" y="489" font-size="15" fill="#c5d3e8" >Notes</text>
-<text x="1135" y="489" font-size="15" fill="#edf3ff" text-anchor="end">21  /  12,6 %</text>
+<text x="1135" y="489" font-size="15" fill="#edf3ff" text-anchor="end">23  /  13,5 %</text>
 <rect x="748" y="506" width="10" height="10" rx="3" fill="#ab9bff" />
 <text x="770" y="516" font-size="15" fill="#c5d3e8" >Supports</text>
-<text x="1135" y="516" font-size="15" fill="#edf3ff" text-anchor="end">12  /  7,2 %</text>
+<text x="1135" y="516" font-size="15" fill="#edf3ff" text-anchor="end">12  /  7,1 %</text>
 <rect x="748" y="533" width="10" height="10" rx="3" fill="#ffca80" />
 <text x="770" y="543" font-size="15" fill="#c5d3e8" >Code &amp; config</text>
-<text x="1135" y="543" font-size="15" fill="#edf3ff" text-anchor="end">43  /  25,7 %</text>
+<text x="1135" y="543" font-size="15" fill="#edf3ff" text-anchor="end">43  /  25,3 %</text>
 <rect x="748" y="560" width="10" height="10" rx="3" fill="#8a9dbb" />
 <text x="770" y="570" font-size="15" fill="#c5d3e8" >Autres</text>
-<text x="1135" y="570" font-size="15" fill="#edf3ff" text-anchor="end">91  /  54,5 %</text>
+<text x="1135" y="570" font-size="15" fill="#edf3ff" text-anchor="end">92  /  54,1 %</text>
 <text x="40" y="674" font-size="12" fill="#9cafcb" >Calculé depuis les fichiers versionnés · Notes, supports, code, configurations et ressources de laboratoire</text>
 </g></svg>
