@@ -1,10 +1,7 @@
-<p align="center">
-  <img src=".github/assets/banner.svg" alt="Cours ING 3 — Apprendre. Expérimenter. Documenter." width="100%">
-</p>
+
 
 <p align="center">
-  <strong>Mon carnet de bord de 3ᵉ année d’ingénieur.</strong><br>
-  Des cours pour comprendre, des TP pour pratiquer, des notes pour s’y retrouver.
+  <strong>Mes cours d'ing3</strong><br>
 </p>
 
 <p align="center">
