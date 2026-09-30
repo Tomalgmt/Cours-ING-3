@@ -1,1 +1,13 @@
+Pour ret2win
+
+On a une fonction qui affiche une chaine et fait un appel systeme pour faire un cal au flag mais cette fonction est pas appelée, e but c'est de l'appeler
+
+Y a une fonction pwnme qui appelle une chaine de charactere via une fonction read qui est vulnérable
+
+On veut récupérer l'offset dans l'entrée standard pour voir la distance entre buffer et adresse de retour écrasée
+
+Et a l'adresse de retour on veut mettre l'adresse de ret2win
+
+
+
 
